@@ -9,6 +9,7 @@ const filterTagListEl = document.getElementById('filter-tag-list');
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
+const MEDIA_RENDER_BATCH_SIZE = 12;
 
 let currentState = {
   root: null,
@@ -19,6 +20,8 @@ let currentState = {
   activeTag: null,
   keywordIndex: {},
 };
+
+let mediaRenderAbortController = null;
 
 render();
 
@@ -292,6 +295,11 @@ async function handleSavedTagRemoval(event, tag, label) {
 }
 
 function renderMedia() {
+  if (mediaRenderAbortController) {
+    mediaRenderAbortController.abort();
+  }
+  mediaRenderAbortController = null;
+  delete mediaGridEl.dataset.loading;
   mediaGridEl.innerHTML = '';
 
   if (!currentState.selectedPath) {
@@ -318,78 +326,7 @@ function renderMedia() {
     return;
   }
 
-  leaf.mediaFiles.forEach((file) => {
-    const card = document.createElement('article');
-    card.className = 'media-card';
-    card.addEventListener('click', () => mediaApi?.openFile?.(file.path));
-
-    let thumb;
-    const resolvedUrl = file.fileUrl || `file://${encodeURI(file.path)}`;
-
-    if (file.type === 'image') {
-      thumb = document.createElement('img');
-      thumb.src = resolvedUrl;
-    } else {
-      thumb = document.createElement('video');
-      thumb.src = resolvedUrl;
-      thumb.preload = 'metadata';
-      thumb.muted = true;
-      thumb.playsInline = true;
-      thumb.addEventListener('loadedmetadata', () => {
-        try {
-          thumb.currentTime = 0.1;
-        } catch (error) {
-          console.warn('Failed to set preview frame for video', file.path, error);
-        }
-      });
-      thumb.addEventListener('seeked', () => {
-        thumb.pause();
-      });
-    }
-    thumb.className = 'media-thumb';
-
-    if (file.type === 'video') {
-      const badge = document.createElement('span');
-      badge.className = 'media-badge media-badge-video';
-      badge.textContent = '🎬';
-      badge.title = '视频';
-      badge.setAttribute('aria-hidden', 'true');
-      card.appendChild(badge);
-    }
-
-    const info = document.createElement('div');
-    info.className = 'media-info';
-
-    const name = document.createElement('span');
-    name.className = 'media-name';
-    name.textContent = file.name;
-
-    const meta = document.createElement('span');
-    meta.className = 'media-meta';
-    if (file.type === 'video') {
-      meta.textContent = '视频';
-    } else if (file.type === 'image') {
-      meta.textContent = '图片';
-    } else {
-      meta.textContent = String(file.type ?? '').toUpperCase() || '媒体';
-    }
-
-    info.appendChild(name);
-    info.appendChild(meta);
-
-    const ratingValue = file.rating ?? file.score;
-    if (ratingValue !== undefined && ratingValue !== null && ratingValue !== '') {
-      const rating = document.createElement('span');
-      rating.className = 'media-rating';
-      rating.textContent = `评分：${ratingValue}`;
-      info.appendChild(rating);
-    }
-
-    card.appendChild(thumb);
-    card.appendChild(info);
-
-    mediaGridEl.appendChild(card);
-  });
+  startMediaRender(leaf.mediaFiles);
 }
 
 function extractKeywords(name) {
@@ -503,4 +440,139 @@ function getActiveTagLabel() {
   }
   const tag = currentState.derivedTags.find((item) => item.id === currentState.activeTag);
   return tag ? tag.label : currentState.activeTag;
+}
+
+function startMediaRender(files) {
+  const controller = new AbortController();
+  mediaRenderAbortController = controller;
+  mediaGridEl.dataset.loading = 'true';
+
+  renderMediaIncrementally(files, controller.signal)
+    .catch((error) => {
+      if (error?.name !== 'AbortError') {
+        console.error('Failed to render media items', error);
+      }
+    })
+    .finally(() => {
+      if (mediaRenderAbortController === controller) {
+        delete mediaGridEl.dataset.loading;
+        mediaRenderAbortController = null;
+      }
+    });
+}
+
+async function renderMediaIncrementally(files, signal) {
+  const queue = Array.isArray(files) ? files.slice() : [];
+
+  while (queue.length && !signal.aborted) {
+    const fragment = document.createDocumentFragment();
+    let count = 0;
+
+    while (queue.length && count < MEDIA_RENDER_BATCH_SIZE && !signal.aborted) {
+      const file = queue.shift();
+      fragment.appendChild(createMediaCard(file));
+      count += 1;
+    }
+
+    mediaGridEl.appendChild(fragment);
+
+    if (queue.length && !signal.aborted) {
+      await waitForNextFrame();
+    }
+  }
+}
+
+function waitForNextFrame() {
+  return new Promise((resolve) => {
+    if (typeof window.requestIdleCallback === 'function') {
+      window.requestIdleCallback(() => resolve());
+      return;
+    }
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(() => resolve());
+      return;
+    }
+    setTimeout(resolve, 16);
+  });
+}
+
+function createMediaCard(file) {
+  const card = document.createElement('article');
+  card.className = 'media-card';
+  if (file?.path) {
+    card.addEventListener('click', () => mediaApi?.openFile?.(file.path));
+  }
+
+  const resolvedUrl = file?.fileUrl || (file?.path ? `file://${encodeURI(file.path)}` : '');
+
+  let thumb;
+  if (file?.type === 'image') {
+    thumb = document.createElement('img');
+    if (resolvedUrl) {
+      thumb.src = resolvedUrl;
+    }
+  } else {
+    thumb = document.createElement('video');
+    if (resolvedUrl) {
+      thumb.src = resolvedUrl;
+    }
+    thumb.preload = 'metadata';
+    thumb.muted = true;
+    thumb.playsInline = true;
+    thumb.addEventListener('loadedmetadata', () => {
+      try {
+        thumb.currentTime = 0.1;
+      } catch (error) {
+        if (file?.path) {
+          console.warn('Failed to set preview frame for video', file.path, error);
+        }
+      }
+    });
+    thumb.addEventListener('seeked', () => {
+      thumb.pause();
+    });
+  }
+  thumb.className = 'media-thumb';
+
+  if (file?.type === 'video') {
+    const badge = document.createElement('span');
+    badge.className = 'media-badge media-badge-video';
+    badge.textContent = '🎬';
+    badge.title = '视频';
+    badge.setAttribute('aria-hidden', 'true');
+    card.appendChild(badge);
+  }
+
+  const info = document.createElement('div');
+  info.className = 'media-info';
+
+  const name = document.createElement('span');
+  name.className = 'media-name';
+  name.textContent = file?.name ?? '';
+
+  const meta = document.createElement('span');
+  meta.className = 'media-meta';
+  if (file?.type === 'video') {
+    meta.textContent = '视频';
+  } else if (file?.type === 'image') {
+    meta.textContent = '图片';
+  } else {
+    meta.textContent = String(file?.type ?? '').toUpperCase() || '媒体';
+  }
+
+  info.appendChild(name);
+  info.appendChild(meta);
+
+  const ratingValue = file?.rating ?? file?.score;
+  if (ratingValue !== undefined && ratingValue !== null && ratingValue !== '') {
+    const rating = document.createElement('span');
+    rating.className = 'media-rating';
+    rating.textContent = `评分：${ratingValue}`;
+    info.appendChild(rating);
+  }
+
+  card.appendChild(thumb);
+  card.appendChild(info);
+
+  return card;
 }
