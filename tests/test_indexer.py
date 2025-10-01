@@ -62,3 +62,28 @@ def test_incremental_updates(tmp_path: Path) -> None:
         entries_after_delete = {entry.path for entry in indexer.iter_all()}
 
     assert "orphan.txt" not in entries_after_delete
+
+
+def test_directory_tags_generated_from_names(tmp_path: Path) -> None:
+    create_file(tmp_path / "Beach 2020" / "photo1.jpg")
+    create_file(tmp_path / "Beach 2021" / "photo2.jpg")
+    create_file(tmp_path / "Mountain Trip" / "photo3.jpg")
+    create_file(tmp_path / "Beach Sunset" / "photo4.jpg")
+
+    index_path = tmp_path / "index.db"
+    with DirectoryIndexer(tmp_path, index_path) as indexer:
+        indexer.build_index(max_workers=2, batch_size=4, min_tag_frequency=2)
+        tags = indexer.list_tags()
+        tag_counts = {tag.name: tag.match_count for tag in tags}
+
+        assert "beach" in tag_counts
+        assert tag_counts["beach"] == 3
+        assert "mountain" not in tag_counts
+
+        beach_directories = {entry.path for entry in indexer.list_directories_by_tag("beach")}
+
+    assert beach_directories == {
+        "Beach 2020",
+        "Beach 2021",
+        "Beach Sunset",
+    }

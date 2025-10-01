@@ -1,10 +1,7 @@
-"""Directory indexing utilities for the ImageViewer project.
+"""ImageViewer 项目的目录索引工具。
 
-The module provides a :class:`DirectoryIndexer` that can crawl a very large
-folder structure and persist a lightweight index to an SQLite database. The
-index makes it possible to open huge media libraries (multiple terabytes) much
-faster on subsequent runs because the expensive IO bound directory walk only
-needs to happen once or when files change.
+该模块提供 :class:`DirectoryIndexer`，可用于遍历超大的目录结构，并将轻量级索引持久化到 SQLite 数据库中。借助该索引，在后续运行时无需
+再次进行耗时的 IO 密集型目录扫描，就能快速打开容量高达数 TB 的媒体库。
 """
 
 from __future__ import annotations
@@ -13,18 +10,19 @@ import argparse
 import logging
 import os
 import queue
+import re
 import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, List, Optional, Sequence, Tuple
+from typing import Dict, Iterator, List, Optional, Sequence, Set, Tuple
 
 LOGGER = logging.getLogger(__name__)
 
 
 @dataclass(slots=True)
 class IndexEntry:
-    """A single file or directory stored in the index."""
+    """索引中存储的单个文件或目录条目。"""
 
     path: str
     parent: str
@@ -33,18 +31,26 @@ class IndexEntry:
     mtime: float
 
 
+@dataclass(slots=True)
+class TagSummary:
+    """自动生成的目录标签概览。"""
+
+    name: str
+    display_name: str
+    match_count: int
+
+
 class DirectoryIndexer:
-    """Incrementally maintain a filesystem index using SQLite.
+    """利用 SQLite 增量维护文件系统索引。
 
     Parameters
     ----------
     root_path:
-        Root directory whose contents should be indexed.
+        需要建立索引的根目录。
     db_path:
-        Location of the SQLite database file that stores the index.
+        存储索引的 SQLite 数据库文件路径。
     follow_symlinks:
-        Whether to follow symbolic links while crawling. The default is
-        ``False`` to avoid infinite recursion when links create cycles.
+        是否在遍历时跟随符号链接。默认为 ``False``，以避免符号链接形成循环时产生无限递归。
     """
 
     def __init__(
@@ -69,35 +75,37 @@ class DirectoryIndexer:
         self._conn.execute("PRAGMA synchronous=NORMAL")
         self._conn.execute("PRAGMA temp_store=MEMORY")
         self._conn.execute("PRAGMA locking_mode=NORMAL")
+        self._conn.execute("PRAGMA foreign_keys=ON")
         self._db_lock = threading.Lock()
         self._ensure_schema()
-        LOGGER.debug("Indexer initialized for %s", self.root_path)
+        LOGGER.debug("索引器已初始化：%s", self.root_path)
 
     # ------------------------------------------------------------------
     # Public API
     # ------------------------------------------------------------------
-    def build_index(self, *, max_workers: Optional[int] = None, batch_size: int = 512) -> None:
-        """Crawl the filesystem and update the on-disk index.
+    def build_index(
+        self,
+        *,
+        max_workers: Optional[int] = None,
+        batch_size: int = 512,
+        min_tag_frequency: int = 2,
+    ) -> None:
+        """遍历文件系统并更新磁盘上的索引。
 
-        The method is safe to call repeatedly. On subsequent runs only new or
-        modified entries are written and files that no longer exist are
-        removed from the index. The heavy scanning work is split between worker
-        threads so that huge directory trees (e.g. > 2TB) can be processed
-        efficiently.
+        该方法可以反复调用。再次执行时，只会写入新增或已修改的条目，并移除已不存在的文件。繁重的扫描工作会分配给多个工作线程，因而
+        能够高效处理超大的目录树（例如超过 2TB）。
 
         Parameters
         ----------
         max_workers:
-            Number of worker threads used for directory traversal. If omitted
-            the value is derived from ``os.cpu_count()``.
+            遍历目录时使用的工作线程数量。若未指定，则根据 ``os.cpu_count()`` 推导。
         batch_size:
-            Number of :class:`IndexEntry` records to buffer before flushing them
-            to the SQLite database. Larger batch sizes reduce commit overhead at
-            the cost of memory usage.
+            在批量写入 SQLite 之前缓冲的 :class:`IndexEntry` 条目数量。批量越大，提交开销越小，但内存占用越高。
         """
 
         max_workers = max_workers or max(os.cpu_count() or 1, 4)
         batch_size = max(batch_size, 32)
+        min_tag_frequency = max(1, min_tag_frequency)
 
         self._reset_seen_flags()
         self._upsert_entries([self._create_root_entry()])
@@ -158,16 +166,16 @@ class DirectoryIndexer:
             thread.join()
 
         self._remove_unseen_entries()
-        LOGGER.info("Index rebuild complete for %s", self.root_path)
+        self._rebuild_tags(min_tag_frequency=min_tag_frequency)
+        LOGGER.info("%s 的索引构建完成", self.root_path)
 
     def list_directory(self, relative_path: str = ".") -> List[IndexEntry]:
-        """Return directory contents from the index.
+        """从索引中返回指定目录的内容。
 
         Parameters
         ----------
         relative_path:
-            Relative path inside the indexed root, for example ``"."`` for the
-            root itself or ``"season1"`` for a nested folder.
+            位于索引根目录下的相对路径，例如 ``"."`` 表示根目录，``"season1"`` 表示某个子目录。
         """
 
         with self._db_lock:
@@ -187,7 +195,7 @@ class DirectoryIndexer:
         ]
 
     def iter_all(self) -> Iterator[IndexEntry]:
-        """Iterate over every entry stored in the index."""
+        """遍历索引中存储的所有条目。"""
 
         with self._db_lock:
             cur = self._conn.execute(
@@ -197,8 +205,44 @@ class DirectoryIndexer:
         for row in rows:
             yield IndexEntry(path=row[0], parent=row[1], is_dir=bool(row[2]), size=row[3], mtime=row[4])
 
+    def list_tags(self) -> List[TagSummary]:
+        """返回自动生成的标签及其匹配数量。"""
+
+        with self._db_lock:
+            cur = self._conn.execute(
+                """
+                SELECT tags.name, tags.display_name, COUNT(entry_tags.entry_path) as count
+                FROM tags
+                JOIN entry_tags ON entry_tags.tag_name = tags.name
+                GROUP BY tags.name, tags.display_name
+                ORDER BY count DESC, tags.display_name
+                """
+            )
+            rows = cur.fetchall()
+        return [TagSummary(name=row[0], display_name=row[1], match_count=row[2]) for row in rows]
+
+    def list_directories_by_tag(self, tag_name: str) -> List[IndexEntry]:
+        """返回与指定标签匹配的目录。"""
+
+        with self._db_lock:
+            cur = self._conn.execute(
+                """
+                SELECT e.path, e.parent, e.is_dir, e.size, e.mtime
+                FROM entries e
+                JOIN entry_tags et ON et.entry_path = e.path
+                WHERE et.tag_name = ?
+                ORDER BY e.path
+                """,
+                (tag_name,),
+            )
+            rows = cur.fetchall()
+        return [
+            IndexEntry(path=row[0], parent=row[1], is_dir=bool(row[2]), size=row[3], mtime=row[4])
+            for row in rows
+        ]
+
     def close(self) -> None:
-        """Close the underlying SQLite connection."""
+        """关闭底层 SQLite 连接。"""
 
         if self._conn is not None:
             self._conn.close()
@@ -228,6 +272,28 @@ class DirectoryIndexer:
             )
             self._conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_entries_parent ON entries(parent)"
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS tags (
+                    name TEXT PRIMARY KEY,
+                    display_name TEXT NOT NULL
+                )
+                """
+            )
+            self._conn.execute(
+                """
+                CREATE TABLE IF NOT EXISTS entry_tags (
+                    entry_path TEXT NOT NULL,
+                    tag_name TEXT NOT NULL,
+                    PRIMARY KEY (entry_path, tag_name),
+                    FOREIGN KEY (entry_path) REFERENCES entries(path) ON DELETE CASCADE,
+                    FOREIGN KEY (tag_name) REFERENCES tags(name) ON DELETE CASCADE
+                )
+                """
+            )
+            self._conn.execute(
+                "CREATE INDEX IF NOT EXISTS idx_entry_tags_tag ON entry_tags(tag_name)"
             )
 
     def _reset_seen_flags(self) -> None:
@@ -287,7 +353,7 @@ class DirectoryIndexer:
                     try:
                         stat_info = dir_entry.stat(follow_symlinks=self.follow_symlinks)
                     except (FileNotFoundError, PermissionError, OSError) as error:
-                        LOGGER.warning("Cannot stat %s: %s", dir_entry.path, error)
+                        LOGGER.warning("无法读取 %s 的元数据：%s", dir_entry.path, error)
                         continue
                     is_directory = dir_entry.is_dir(follow_symlinks=self.follow_symlinks)
                     relative_child = self._to_relative(Path(dir_entry.path))
@@ -302,53 +368,110 @@ class DirectoryIndexer:
                     if is_directory:
                         directories.append((Path(dir_entry.path), relative_child))
         except (FileNotFoundError, PermissionError) as error:
-            LOGGER.warning("Cannot access %s: %s", abs_path, error)
+            LOGGER.warning("无法访问 %s：%s", abs_path, error)
         return entries, directories
 
     def _to_relative(self, path: Path) -> str:
         try:
             relative = path.resolve().relative_to(self.root_path)
         except ValueError:
-            # When a path escapes the root (for example a symlink that points
-            # outside) fall back to absolute representation so we do not lose
-            # the information.
+            # 当路径超出根目录（例如符号链接指向外部）时，退回到绝对路径表示，以免丢失信息。
             return path.resolve().as_posix()
         if not relative.parts:
             return "."
         return relative.as_posix()
 
+    def _rebuild_tags(self, *, min_tag_frequency: int) -> None:
+        directories: List[str]
+        with self._db_lock:
+            cur = self._conn.execute("SELECT path FROM entries WHERE is_dir = 1")
+            directories = [row[0] for row in cur.fetchall()]
+
+        token_map: Dict[str, Set[str]] = {}
+        for directory in directories:
+            if directory == ".":
+                continue
+            folder_name = Path(directory).name
+            tokens = self._tokenize(folder_name)
+            for token in tokens:
+                token_map.setdefault(token, set()).add(directory)
+
+        filtered = {token: paths for token, paths in token_map.items() if len(paths) >= min_tag_frequency}
+
+        with self._db_lock:
+            self._conn.execute("DELETE FROM entry_tags")
+            self._conn.execute("DELETE FROM tags")
+
+            if filtered:
+                ordered_tokens = sorted(filtered.keys())
+                tag_rows = [
+                    (token, self._format_tag_display(token))
+                    for token in ordered_tokens
+                ]
+                self._conn.executemany(
+                    "INSERT INTO tags(name, display_name) VALUES(?, ?)",
+                    tag_rows,
+                )
+
+                association_rows = [
+                    (directory, token)
+                    for token in ordered_tokens
+                    for directory in sorted(filtered[token])
+                ]
+                self._conn.executemany(
+                    "INSERT INTO entry_tags(entry_path, tag_name) VALUES(?, ?)",
+                    association_rows,
+                )
+
+            self._conn.commit()
+
+    def _tokenize(self, name: str) -> Set[str]:
+        tokens = {match.group(0).lower() for match in re.finditer(r"[0-9A-Za-z]+", name)}
+        return {token for token in tokens if len(token) >= 2}
+
+    def _format_tag_display(self, token: str) -> str:
+        if token.isalpha():
+            return token.capitalize()
+        return token
+
 
 def build_arg_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="Build an SQLite index for large media libraries")
-    parser.add_argument("root", type=Path, help="Root directory to index")
+    parser = argparse.ArgumentParser(description="为大型媒体库构建 SQLite 索引")
+    parser.add_argument("root", type=Path, help="需要建立索引的根目录")
     parser.add_argument(
         "--database",
         type=Path,
         default=Path("media_index.db"),
-        help="Location for the generated SQLite database (default: media_index.db)",
+        help="生成的 SQLite 数据库存放位置（默认：media_index.db）",
     )
     parser.add_argument(
         "--workers",
         type=int,
         default=None,
-        help="Number of worker threads (defaults to number of logical CPUs)",
+        help="工作线程数量（默认使用逻辑 CPU 数量）",
     )
     parser.add_argument(
         "--follow-symlinks",
         action="store_true",
-        help="Follow symbolic links while indexing",
+        help="在索引过程中跟随符号链接",
     )
     parser.add_argument(
         "--batch-size",
         type=int,
         default=512,
-        help="Number of entries to buffer before writing to disk",
+        help="写入磁盘前缓冲的条目数量",
+    )
+    parser.add_argument(
+        "--min-tag-frequency",
+        type=int,
+        default=2,
+        help="某个关键词至少需要匹配多少个目录后才会升级为标签",
     )
     parser.add_argument(
         "--log-level",
         default="INFO",
         choices=["CRITICAL", "ERROR", "WARNING", "INFO", "DEBUG"],
-        help="Logging level to use while indexing",
+        help="索引过程使用的日志级别",
     )
     return parser
 
@@ -360,8 +483,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     logging.basicConfig(level=getattr(logging, args.log_level))
 
     with DirectoryIndexer(args.root, args.database, follow_symlinks=args.follow_symlinks) as indexer:
-        indexer.build_index(max_workers=args.workers, batch_size=args.batch_size)
-    LOGGER.info("Index written to %s", args.database)
+        indexer.build_index(
+            max_workers=args.workers,
+            batch_size=args.batch_size,
+            min_tag_frequency=args.min_tag_frequency,
+        )
+    LOGGER.info("索引已写入 %s", args.database)
     return 0
 
 
