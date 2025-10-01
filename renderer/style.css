@@ -1,0 +1,248 @@
+:root {
+  color-scheme: light dark;
+  --bg-color: #f6f8fa;
+  --panel-bg: #ffffffcc;
+  --border-color: #d0d7de;
+  --text-color: #24292f;
+  --accent-color: #0969da;
+  --accent-color-contrast: #ffffff;
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+}
+
+body {
+  margin: 0;
+  background: var(--bg-color);
+  color: var(--text-color);
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  backdrop-filter: blur(6px);
+}
+
+.app-header h1 {
+  margin: 0;
+  font-size: 1.25rem;
+}
+
+.app-header button {
+  border: none;
+  background: var(--accent-color);
+  color: var(--accent-color-contrast);
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.app-header button:hover {
+  filter: brightness(1.1);
+}
+
+.tag-bar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 0.75rem 1.5rem;
+  border-bottom: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  overflow-x: auto;
+}
+
+.tag-bar h2 {
+  flex-shrink: 0;
+  margin: 0;
+  font-size: 0.95rem;
+}
+
+.tag-list {
+  display: flex;
+  gap: 0.5rem;
+  list-style: none;
+  padding: 0;
+  margin: 0;
+}
+
+.tag-item {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(9, 105, 218, 0.12);
+  color: var(--accent-color);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.tag-button {
+  border: none;
+  background: transparent;
+  padding: 0.35rem 0.75rem;
+  color: inherit;
+  cursor: pointer;
+  font-size: 0.85rem;
+}
+
+.tag-button:hover {
+  background: rgba(9, 105, 218, 0.18);
+}
+
+.tag-remove-button {
+  border: none;
+  background: transparent;
+  color: inherit;
+  padding: 0.35rem 0.45rem;
+  cursor: pointer;
+  font-size: 0.85rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.tag-remove-button:hover {
+  background: rgba(0, 0, 0, 0.08);
+}
+
+.tag-empty {
+  color: #57606a;
+  font-size: 0.85rem;
+}
+
+.app-body {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+}
+
+.directory-panel {
+  width: 260px;
+  border-right: 1px solid var(--border-color);
+  background: var(--panel-bg);
+  padding: 1rem;
+  overflow-y: auto;
+}
+
+.directory-panel h2 {
+  margin: 0 0 0.5rem;
+  font-size: 1rem;
+}
+
+.current-root {
+  font-size: 0.8rem;
+  color: #57606a;
+  word-break: break-all;
+  margin-bottom: 0.75rem;
+}
+
+.directory-list {
+  list-style: none;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.directory-item {
+  padding: 0.5rem 0.75rem;
+  border-radius: 6px;
+  cursor: pointer;
+  transition: background 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  line-height: 1.2;
+}
+
+.directory-item:hover {
+  background: rgba(9, 105, 218, 0.1);
+}
+
+.directory-item.active {
+  background: rgba(9, 105, 218, 0.18);
+  color: var(--accent-color);
+  font-weight: 600;
+}
+
+.directory-item .directory-name {
+  flex: 1;
+}
+
+.media-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  padding: 1rem 1.5rem;
+  overflow: hidden;
+}
+
+.media-panel-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  margin-bottom: 1rem;
+}
+
+.media-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 1rem;
+  overflow-y: auto;
+  padding-bottom: 1rem;
+}
+
+.media-card {
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 10px;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.media-card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 12px rgba(15, 23, 42, 0.15);
+}
+
+.media-thumb {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: #f0f3f6;
+}
+
+.media-card video.media-thumb {
+  background: #0f172a;
+}
+
+.media-info {
+  padding: 0.5rem 0.75rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.media-name {
+  font-size: 0.85rem;
+  word-break: break-all;
+}
+
+.media-meta {
+  font-size: 0.75rem;
+  color: #57606a;
+}
+
+.empty-state {
+  color: #57606a;
+  font-size: 0.9rem;
+}

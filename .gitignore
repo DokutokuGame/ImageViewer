@@ -3,3 +3,11 @@ __pycache__/
 *.sqlite3
 *.db
 *.db-*
+node_modules/
+.DS_Store
+/dist
+/out
+/build
+
+# Electron cache
+*.log
