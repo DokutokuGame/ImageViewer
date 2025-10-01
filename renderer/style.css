@@ -9,13 +9,20 @@
   font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
 }
 
+html,
+body {
+  height: 100%;
+}
+
 body {
   margin: 0;
   background: var(--bg-color);
   color: var(--text-color);
   min-height: 100vh;
+  height: 100vh;
   display: flex;
   flex-direction: column;
+  overflow: hidden;
 }
 
 .app-header {
@@ -26,6 +33,7 @@ body {
   border-bottom: 1px solid var(--border-color);
   background: var(--panel-bg);
   backdrop-filter: blur(6px);
+  flex-shrink: 0;
 }
 
 .app-header h1 {
@@ -56,6 +64,7 @@ body {
   border-bottom: 1px solid var(--border-color);
   background: var(--panel-bg);
   overflow-x: auto;
+  flex-shrink: 0;
 }
 
 .tag-bar h2 {
