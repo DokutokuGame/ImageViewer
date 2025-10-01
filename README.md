@@ -9,6 +9,7 @@
 - 可配置的批量大小，用于平衡内存占用与写入性能。
 - 提供命令行界面以构建和刷新索引。
 - 基于目录名称关键词的自动标签功能，便于进行语义分类。
+- 预置中文界面的菜单栏配置，方便前端直接加载使用。
 
 ## 使用方法
 
@@ -32,6 +33,20 @@ python -m image_viewer.indexer /path/to/your/library --database media_index.db -
 
 ```bash
 python -m image_viewer.indexer /path/to/your/library --min-tag-frequency 3
+```
+
+### 菜单栏本地化
+
+`image_viewer.menu` 模块提供了 `build_default_menu()` 函数，可生成一份已经
+翻译成中文的菜单栏结构。前端（例如 Electron 或桌面应用）可以直接将其
+序列化为 JSON，填充到应用的菜单系统中：
+
+```python
+from image_viewer.menu import build_default_menu
+
+menu_definition = [item.to_dict() for item in build_default_menu()]
+# 将 menu_definition 传入前端或写入配置文件即可。所有菜单标题、命令名称
+# 与快捷键提示均已是中文描述。
 ```
 
 ### 以代码方式调用
