@@ -118,6 +118,7 @@ body {
 .app-body {
   display: flex;
   flex: 1;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -128,6 +129,7 @@ body {
   padding: 1rem;
   display: flex;
   flex-direction: column;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -152,6 +154,7 @@ body {
   display: grid;
   grid-template-columns: 200px 1fr;
   gap: 1rem;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -159,7 +162,9 @@ body {
 .folder-column {
   display: flex;
   flex-direction: column;
+  gap: 0.5rem;
   min-height: 0;
+  overflow: hidden;
 }
 
 .tag-column h3,
@@ -173,6 +178,8 @@ body {
   display: flex;
   flex-wrap: wrap;
   gap: 0.5rem;
+  flex: 1;
+  align-content: flex-start;
   overflow-y: auto;
   padding-right: 0.25rem;
 }
@@ -210,6 +217,7 @@ body {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
+  flex: 1;
   overflow-y: auto;
   padding-right: 0.25rem;
 }
@@ -244,6 +252,7 @@ body {
   display: flex;
   flex-direction: column;
   padding: 1rem 1.5rem;
+  min-height: 0;
   overflow: hidden;
 }
 
@@ -272,6 +281,7 @@ body {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1rem;
+  flex: 1;
   overflow-y: auto;
   padding-bottom: 1rem;
 }
