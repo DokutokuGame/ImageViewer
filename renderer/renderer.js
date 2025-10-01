@@ -4,6 +4,7 @@ const currentRootEl = document.getElementById('current-root');
 const mediaHeadingEl = document.getElementById('media-heading');
 const mediaCountEl = document.getElementById('media-count');
 const selectRootButton = document.getElementById('select-root');
+const openDirectoryButton = document.getElementById('open-directory');
 const tagListEl = document.getElementById('tag-list');
 const filterTagListEl = document.getElementById('filter-tag-list');
 const mediaApi = window.mediaApi;
@@ -31,6 +32,16 @@ if (imageLoader?.dispose) {
 }
 
 render();
+
+if (openDirectoryButton) {
+  openDirectoryButton.addEventListener('click', () => {
+    const path = openDirectoryButton.dataset.path;
+    if (path) {
+      void openDirectoryInExplorer(path);
+    }
+  });
+  updateOpenDirectoryButton(null);
+}
 
 if (mediaApi?.getRootTags) {
   mediaApi
@@ -237,6 +248,13 @@ function renderDirectoryList() {
       updateState({ selectedPath: leaf.path });
     });
 
+    item.addEventListener('contextmenu', (event) => {
+      event.preventDefault();
+      void openDirectoryInExplorer(leaf.path);
+    });
+
+    item.title = '右键可在系统文件管理器中打开该目录';
+
     const name = document.createElement('span');
     name.className = 'directory-name';
     name.textContent = leaf.displayPath;
@@ -250,6 +268,59 @@ function renderDirectoryList() {
 
     directoryListEl.appendChild(item);
   });
+}
+
+function updateOpenDirectoryButton(leaf) {
+  if (!openDirectoryButton) {
+    return;
+  }
+
+  if (leaf?.path) {
+    openDirectoryButton.disabled = false;
+    openDirectoryButton.dataset.path = leaf.path;
+    openDirectoryButton.title = leaf.path;
+    openDirectoryButton.setAttribute(
+      'aria-label',
+      `在资源管理器中打开 ${leaf.displayPath || leaf.path}`
+    );
+  } else {
+    openDirectoryButton.disabled = true;
+    delete openDirectoryButton.dataset.path;
+    openDirectoryButton.removeAttribute('aria-label');
+    openDirectoryButton.removeAttribute('title');
+  }
+}
+
+async function openDirectoryInExplorer(directoryPath) {
+  if (!directoryPath) {
+    return;
+  }
+
+  if (mediaApi?.openDirectory) {
+    try {
+      const result = await mediaApi.openDirectory(directoryPath);
+      if (result && result.success === false) {
+        throw new Error(result.error || '无法打开目录');
+      }
+      return;
+    } catch (error) {
+      console.error('Failed to open directory', error);
+      window.alert('无法在系统文件管理器中打开该目录，请确认路径是否存在。');
+      return;
+    }
+  }
+
+  try {
+    if (navigator.clipboard?.writeText) {
+      await navigator.clipboard.writeText(directoryPath);
+      window.alert(`已复制目录路径：\n${directoryPath}`);
+    } else {
+      window.prompt('请复制目录路径：', directoryPath);
+    }
+  } catch (error) {
+    console.error('Failed to copy directory path', error);
+    window.prompt('请复制目录路径：', directoryPath);
+  }
 }
 
 function formatSavedTagLabel(tag) {
@@ -309,6 +380,8 @@ function renderMedia() {
   delete mediaGridEl.dataset.loading;
   mediaGridEl.innerHTML = '';
 
+  updateOpenDirectoryButton(null);
+
   if (!currentState.selectedPath) {
     mediaHeadingEl.textContent = '媒体';
     mediaCountEl.textContent = '';
@@ -321,6 +394,8 @@ function renderMedia() {
     mediaCountEl.textContent = '';
     return;
   }
+
+  updateOpenDirectoryButton(leaf);
 
   mediaHeadingEl.textContent = leaf.displayPath;
   mediaCountEl.textContent = `${leaf.mediaFiles.length} 个项目`;

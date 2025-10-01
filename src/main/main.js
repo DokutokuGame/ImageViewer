@@ -91,3 +91,23 @@ ipcMain.handle('open-file', async (_event, filePath) => {
   }
   await shell.openPath(filePath);
 });
+
+ipcMain.handle('open-directory', async (_event, directoryPath) => {
+  if (!directoryPath) {
+    return { success: false, error: 'Missing directory path' };
+  }
+
+  try {
+    const result = await shell.openPath(directoryPath);
+    if (result) {
+      return { success: false, error: result };
+    }
+    return { success: true };
+  } catch (error) {
+    console.error('Failed to open directory', error);
+    return {
+      success: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
+});
