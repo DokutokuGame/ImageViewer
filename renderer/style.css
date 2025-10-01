@@ -311,11 +311,33 @@ body {
   flex-direction: column;
   box-shadow: 0 2px 4px rgba(15, 23, 42, 0.08);
   transition: transform 0.15s ease, box-shadow 0.15s ease;
+  position: relative;
 }
 
 .media-card:hover {
   transform: translateY(-2px);
   box-shadow: 0 6px 12px rgba(15, 23, 42, 0.15);
+}
+
+.media-badge {
+  position: absolute;
+  top: 0.5rem;
+  left: 0.5rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.75rem;
+  height: 1.75rem;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.75);
+  color: #ffffff;
+  font-size: 0.95rem;
+  z-index: 2;
+  box-shadow: 0 2px 4px rgba(15, 23, 42, 0.3);
+}
+
+.media-badge-video {
+  font-size: 0.9rem;
 }
 
 .media-thumb {
@@ -344,6 +366,11 @@ body {
 .media-meta {
   font-size: 0.75rem;
   color: #57606a;
+}
+
+.media-rating {
+  font-size: 0.75rem;
+  color: #7f56d9;
 }
 
 .empty-state {

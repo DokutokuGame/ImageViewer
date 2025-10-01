@@ -348,6 +348,15 @@ function renderMedia() {
     }
     thumb.className = 'media-thumb';
 
+    if (file.type === 'video') {
+      const badge = document.createElement('span');
+      badge.className = 'media-badge media-badge-video';
+      badge.textContent = '🎬';
+      badge.title = '视频';
+      badge.setAttribute('aria-hidden', 'true');
+      card.appendChild(badge);
+    }
+
     const info = document.createElement('div');
     info.className = 'media-info';
 
@@ -357,10 +366,24 @@ function renderMedia() {
 
     const meta = document.createElement('span');
     meta.className = 'media-meta';
-    meta.textContent = file.type.toUpperCase();
+    if (file.type === 'video') {
+      meta.textContent = '视频';
+    } else if (file.type === 'image') {
+      meta.textContent = '图片';
+    } else {
+      meta.textContent = String(file.type ?? '').toUpperCase() || '媒体';
+    }
 
     info.appendChild(name);
     info.appendChild(meta);
+
+    const ratingValue = file.rating ?? file.score;
+    if (ratingValue !== undefined && ratingValue !== null && ratingValue !== '') {
+      const rating = document.createElement('span');
+      rating.className = 'media-rating';
+      rating.textContent = `评分：${ratingValue}`;
+      info.appendChild(rating);
+    }
 
     card.appendChild(thumb);
     card.appendChild(info);
@@ -373,18 +396,33 @@ function extractKeywords(name) {
   if (!name) {
     return [];
   }
-  const pattern = /[\p{Script=Han}\p{L}\p{N}]+/gu;
+
+  const pattern = /(?:[⭐]+|[\p{Script=Han}\p{L}\p{N}]+)/gu;
   const matches = name.match(pattern) || [];
-  return Array.from(
-    new Set(
-      matches
-        .map((token) => token.trim().toLowerCase())
-        .filter((token) => token.length > 1)
-    )
-  );
+
+  const normalized = matches
+    .map((token) => token.trim())
+    .filter(Boolean)
+    .map((token) => {
+      if (/^⭐+$/u.test(token)) {
+        return token;
+      }
+      return token.toLowerCase();
+    })
+    .filter((token) => {
+      if (/^⭐+$/u.test(token)) {
+        return true;
+      }
+      return token.length > 1;
+    });
+
+  return Array.from(new Set(normalized));
 }
 
 function humanizeKeyword(keyword) {
+  if (/^⭐+$/u.test(keyword)) {
+    return keyword;
+  }
   if (/^[\p{Script=Han}]+$/u.test(keyword)) {
     return keyword;
   }
