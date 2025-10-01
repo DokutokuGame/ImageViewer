@@ -288,9 +288,38 @@ body {
 
 .media-panel-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+  gap: 1rem;
   margin-bottom: 1rem;
+}
+
+.media-heading-group {
+  display: flex;
+  align-items: baseline;
+  gap: 0.5rem;
+}
+
+.open-directory-button {
+  border: none;
+  background: var(--accent-color);
+  color: var(--accent-color-contrast);
+  padding: 0.4rem 1rem;
+  border-radius: 999px;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: filter 0.2s ease, opacity 0.2s ease;
+  white-space: nowrap;
+}
+
+.open-directory-button:not([disabled]):hover {
+  filter: brightness(1.1);
+}
+
+.open-directory-button[disabled] {
+  cursor: not-allowed;
+  opacity: 0.6;
+  filter: none;
 }
 
 .media-grid {
