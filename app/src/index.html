@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta http-equiv="X-UA-Compatible" content="IE=edge" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>本地媒体浏览器</title>
+    <link rel="stylesheet" href="https://unpkg.com/@primer/css/dist/primer.css" />
+    <link rel="stylesheet" href="styles.css" />
+  </head>
+  <body>
+    <div class="app-shell">
+      <header class="app-header">
+        <div class="branding">
+          <h1 class="app-title">本地媒体浏览器</h1>
+          <p class="app-subtitle">快速筛选和浏览超大媒体资料库</p>
+        </div>
+        <button id="select-directory" class="btn btn-primary">
+          选择目录
+        </button>
+      </header>
+      <main class="app-main">
+        <aside class="sidebar">
+          <div class="panel">
+            <div class="panel-header">
+              <h2 class="panel-title">已保存的目录</h2>
+              <button id="clear-selection" class="btn btn-sm btn-invisible">清除筛选</button>
+            </div>
+            <ul id="directory-list" class="directory-list"></ul>
+          </div>
+          <div class="panel">
+            <div class="panel-header">
+              <h3 class="panel-title">标签</h3>
+              <span id="tag-summary" class="panel-meta"></span>
+            </div>
+            <div id="tag-list" class="tag-list"></div>
+          </div>
+        </aside>
+        <section class="content">
+          <div class="content-header">
+            <h2 id="content-title">媒体</h2>
+            <span id="content-meta" class="content-meta">请选择标签或目录开始浏览</span>
+          </div>
+          <div id="directory-detail" class="directory-detail empty">
+            <div class="empty-state">
+              <h3>尚未选择目录</h3>
+              <p>点击左上角的“选择目录”按钮，即可将常用文件夹加入到列表中。</p>
+            </div>
+          </div>
+        </section>
+      </main>
+    </div>
+    <script type="module" src="renderer.js"></script>
+  </body>
+</html>

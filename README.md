@@ -10,6 +10,7 @@
 - 提供命令行界面以构建和刷新索引。
 - 基于目录名称关键词的自动标签功能，便于进行语义分类。
 - 预置中文界面的菜单栏配置，方便前端直接加载使用。
+- Electron 图形界面完整中文化，提供目录选择、标签筛选与离线缓存能力。
 
 ## 使用方法
 
@@ -34,6 +35,22 @@ python -m image_viewer.indexer /path/to/your/library --database media_index.db -
 ```bash
 python -m image_viewer.indexer /path/to/your/library --min-tag-frequency 3
 ```
+
+### 中文图形界面
+
+`app/` 目录包含已经翻译好的 Electron 前端。界面中所有标题、按钮、空状态提示与标签名称均为中文，可与上方的索引器配合使用：
+
+```bash
+cd app
+npm install
+npm start
+```
+
+界面功能简介：
+
+- **选择目录：** 点击右上角按钮调用系统对话框，新增的目录会在侧栏展示，并写入本地缓存。
+- **自动标签：** 当多个目录包含相同关键词时，会自动生成中文标签，点击即可筛选。
+- **离线模式：** 如果未启动 Electron 主进程提供的 IPC 接口，界面会使用浏览器的 LocalStorage 作为后备，仍可体验中文界面。
 
 ### 菜单栏本地化
 
