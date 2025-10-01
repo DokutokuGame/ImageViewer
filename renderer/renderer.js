@@ -31,7 +31,7 @@ if (mediaApi?.getRootTags) {
 
 if (!mediaApi?.selectRoot) {
   selectRootButton.disabled = true;
-  selectRootButton.textContent = 'Select Directory (unavailable)';
+  selectRootButton.textContent = '选择目录（不可用）';
   console.warn('mediaApi.selectRoot is unavailable.');
 } else {
   selectRootButton.addEventListener('click', async () => {
@@ -62,7 +62,7 @@ function render() {
 
 function renderRoot() {
   if (!currentState.root) {
-    currentRootEl.textContent = 'No directory selected';
+    currentRootEl.textContent = '尚未选择目录';
   } else {
     currentRootEl.textContent = currentState.root;
   }
@@ -79,8 +79,8 @@ function renderTags() {
     const empty = document.createElement('span');
     empty.className = 'tag-empty';
     empty.textContent = mediaApi?.getRootTags
-      ? 'No saved directories yet.'
-      : 'Saved directories unavailable.';
+      ? '尚未保存任何目录。'
+      : '无法获取已保存的目录。';
     tagListEl.appendChild(empty);
     return;
   }
@@ -101,7 +101,7 @@ function renderTags() {
     const removeButton = document.createElement('button');
     removeButton.className = 'tag-remove-button';
     removeButton.type = 'button';
-    removeButton.setAttribute('aria-label', `Remove ${label}`);
+    removeButton.setAttribute('aria-label', `移除 ${label}`);
     removeButton.textContent = '×';
     removeButton.addEventListener('click', (event) =>
       handleTagRemoval(event, tag, label)
@@ -119,8 +119,8 @@ function renderDirectoryList() {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'empty-state';
     emptyMessage.textContent = currentState.root
-      ? 'No media found in the selected directory.'
-      : 'Choose a directory to begin.';
+      ? '所选目录中没有媒体文件。'
+      : '请选择一个目录开始。';
     directoryListEl.appendChild(emptyMessage);
     return;
   }
@@ -165,7 +165,7 @@ function formatTagLabel(tag) {
     const lastSegment = segments.length ? segments[segments.length - 1] : '';
     return lastSegment || tag.path;
   }
-  return 'Saved directory';
+  return '已保存的目录';
 }
 
 async function handleTagSelection(tag) {
@@ -191,7 +191,7 @@ async function handleTagRemoval(event, tag, label) {
     return;
   }
 
-  const confirmed = window.confirm(`Remove saved directory "${label}"?`);
+  const confirmed = window.confirm(`要移除已保存的目录“${label}”吗？`);
   if (!confirmed) {
     return;
   }
@@ -211,21 +211,19 @@ function renderMedia() {
     currentState.selectedIndex == null ||
     !currentState.leaves[currentState.selectedIndex]
   ) {
-    mediaHeadingEl.textContent = 'Media';
+    mediaHeadingEl.textContent = '媒体';
     mediaCountEl.textContent = '';
     return;
   }
 
   const leaf = currentState.leaves[currentState.selectedIndex];
   mediaHeadingEl.textContent = leaf.displayPath;
-  mediaCountEl.textContent = `${leaf.mediaFiles.length} item${
-    leaf.mediaFiles.length === 1 ? '' : 's'
-  }`;
+  mediaCountEl.textContent = `${leaf.mediaFiles.length} 个项目`;
 
   if (!leaf.mediaFiles.length) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'empty-state';
-    emptyMessage.textContent = 'No media files in this folder.';
+    emptyMessage.textContent = '该文件夹中没有媒体文件。';
     mediaGridEl.appendChild(emptyMessage);
     return;
   }
