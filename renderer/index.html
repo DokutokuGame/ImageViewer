@@ -1,29 +1,33 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Local Media Explorer</title>
+    <title>本地媒体浏览器</title>
     <link rel="stylesheet" href="style.css" />
   </head>
   <body>
     <header class="app-header">
-      <h1>Local Media Explorer</h1>
-      <button id="select-root">Select Directory</button>
+      <h1>本地媒体浏览器</h1>
+      <button id="select-root">选择目录</button>
     </header>
     <section class="tag-bar">
-      <h2>Saved Directories</h2>
+      <h2>已保存的目录</h2>
       <ul id="tag-list" class="tag-list"></ul>
     </section>
     <main class="app-body">
       <aside class="directory-panel">
-        <h2>Folders</h2>
-        <p id="current-root" class="current-root">No directory selected</p>
+        <h2>文件夹</h2>
+        <p id="current-root" class="current-root">尚未选择目录</p>
+        <div class="filter-section">
+          <h3>标签筛选</h3>
+          <div id="filter-tag-list" class="filter-tag-list"></div>
+        </div>
         <ul id="directory-list" class="directory-list"></ul>
       </aside>
       <section class="media-panel">
         <div class="media-panel-header">
-          <h2 id="media-heading">Media</h2>
+          <h2 id="media-heading">媒体</h2>
           <span id="media-count" class="media-count"></span>
         </div>
         <div id="media-grid" class="media-grid"></div>

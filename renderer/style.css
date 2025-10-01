@@ -141,6 +141,49 @@ body {
   margin-bottom: 0.75rem;
 }
 
+.filter-section {
+  margin-bottom: 1rem;
+}
+
+.filter-section h3 {
+  margin: 0 0 0.5rem;
+  font-size: 0.9rem;
+  color: #57606a;
+}
+
+.filter-tag-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.filter-tag-button {
+  border: 1px solid var(--border-color);
+  background: #f0f6ff;
+  color: var(--accent-color);
+  border-radius: 999px;
+  padding: 0.35rem 0.75rem;
+  font-size: 0.8rem;
+  cursor: pointer;
+  transition: background 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+}
+
+.filter-tag-button:hover {
+  background: rgba(9, 105, 218, 0.16);
+}
+
+.filter-tag-button.active {
+  background: var(--accent-color);
+  color: var(--accent-color-contrast);
+  border-color: var(--accent-color);
+}
+
+.filter-tag-empty {
+  font-size: 0.8rem;
+  color: #8c959f;
+}
+
 .directory-list {
   list-style: none;
   padding: 0;
