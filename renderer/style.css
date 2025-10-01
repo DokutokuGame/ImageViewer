@@ -347,6 +347,28 @@ body {
   background: #f0f3f6;
 }
 
+canvas.media-thumb {
+  display: block;
+  height: auto;
+}
+
+canvas.media-thumb[data-loading] {
+  position: relative;
+  background: linear-gradient(90deg, #f0f3f6 0%, #e3e8ef 50%, #f0f3f6 100%);
+  background-size: 200% 100%;
+  animation: media-thumb-loading 1.2s ease-in-out infinite;
+}
+
+canvas.media-thumb[data-error] {
+  background: repeating-linear-gradient(
+    45deg,
+    rgba(239, 68, 68, 0.1),
+    rgba(239, 68, 68, 0.1) 10px,
+    rgba(239, 68, 68, 0.2) 10px,
+    rgba(239, 68, 68, 0.2) 20px
+  );
+}
+
 .media-card video.media-thumb {
   background: #0f172a;
 }
@@ -371,6 +393,15 @@ body {
 .media-rating {
   font-size: 0.75rem;
   color: #7f56d9;
+}
+
+@keyframes media-thumb-loading {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
 }
 
 .empty-state {

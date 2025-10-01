@@ -22,6 +22,13 @@ let currentState = {
 };
 
 let mediaRenderAbortController = null;
+const imageLoader = createImageLoader();
+
+if (imageLoader?.dispose) {
+  window.addEventListener('beforeunload', () => {
+    imageLoader.dispose();
+  });
+}
 
 render();
 
@@ -470,7 +477,7 @@ async function renderMediaIncrementally(files, signal) {
 
     while (queue.length && count < MEDIA_RENDER_BATCH_SIZE && !signal.aborted) {
       const file = queue.shift();
-      fragment.appendChild(createMediaCard(file));
+      fragment.appendChild(createMediaCard(file, signal));
       count += 1;
     }
 
@@ -496,7 +503,7 @@ function waitForNextFrame() {
   });
 }
 
-function createMediaCard(file) {
+function createMediaCard(file, signal) {
   const card = document.createElement('article');
   card.className = 'media-card';
   if (file?.path) {
@@ -507,9 +514,12 @@ function createMediaCard(file) {
 
   let thumb;
   if (file?.type === 'image') {
-    thumb = document.createElement('img');
+    thumb = document.createElement('canvas');
+    thumb.className = 'media-thumb media-thumb-image';
+    thumb.style.aspectRatio = '4 / 3';
+    thumb.style.width = '100%';
     if (resolvedUrl) {
-      thumb.src = resolvedUrl;
+      loadImageThumbnail(thumb, resolvedUrl, signal);
     }
   } else {
     thumb = document.createElement('video');
@@ -532,7 +542,9 @@ function createMediaCard(file) {
       thumb.pause();
     });
   }
-  thumb.className = 'media-thumb';
+  if (!thumb.className) {
+    thumb.className = 'media-thumb';
+  }
 
   if (file?.type === 'video') {
     const badge = document.createElement('span');
@@ -575,4 +587,287 @@ function createMediaCard(file) {
   card.appendChild(info);
 
   return card;
+}
+
+function loadImageThumbnail(canvas, url, signal) {
+  if (!(canvas instanceof HTMLCanvasElement) || !url) {
+    return;
+  }
+
+  canvas.dataset.loading = 'true';
+
+  imageLoader
+    .load(url, signal)
+    .then((result) => {
+      if (signal?.aborted) {
+        disposeImageResult(result);
+        return;
+      }
+
+      delete canvas.dataset.error;
+
+      if (result?.kind === 'bitmap' && result.bitmap) {
+        drawBitmapToCanvas(canvas, result.bitmap);
+        result.bitmap.close();
+      } else if (result?.kind === 'blob' && result.blob) {
+        drawBlobToCanvas(canvas, result.blob, signal);
+      } else if (result?.kind === 'image' && result.image) {
+        drawImageToCanvas(canvas, result.image, signal);
+      }
+    })
+    .catch((error) => {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+      console.warn('Failed to load thumbnail', url, error);
+      canvas.dataset.error = 'true';
+    })
+    .finally(() => {
+      delete canvas.dataset.loading;
+    });
+}
+
+function drawBitmapToCanvas(canvas, bitmap) {
+  if (!canvas || !bitmap) {
+    return;
+  }
+
+  canvas.width = bitmap.width || canvas.width || 1;
+  canvas.height = bitmap.height || canvas.height || 1;
+  if (bitmap.width && bitmap.height) {
+    canvas.style.aspectRatio = `${bitmap.width} / ${bitmap.height}`;
+  }
+
+  const bitmapCtx = canvas.getContext('bitmaprenderer');
+  if (bitmapCtx && typeof bitmapCtx.transferFromImageBitmap === 'function') {
+    bitmapCtx.transferFromImageBitmap(bitmap);
+    return;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return;
+  }
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+}
+
+function drawBlobToCanvas(canvas, blob, signal) {
+  const blobUrl = URL.createObjectURL(blob);
+  const image = new Image();
+  image.decoding = 'async';
+  image.onload = () => {
+    try {
+      if (!signal?.aborted) {
+        drawImageToCanvas(canvas, image, signal);
+      }
+    } finally {
+      URL.revokeObjectURL(blobUrl);
+    }
+  };
+  image.onerror = () => {
+    URL.revokeObjectURL(blobUrl);
+    canvas.dataset.error = 'true';
+  };
+  image.src = blobUrl;
+}
+
+function drawImageToCanvas(canvas, image, signal) {
+  if (!canvas || !image) {
+    return;
+  }
+
+  if (signal?.aborted) {
+    return;
+  }
+
+  const width = image.naturalWidth || image.width || canvas.width || 1;
+  const height = image.naturalHeight || image.height || canvas.height || 1;
+  canvas.width = width;
+  canvas.height = height;
+  if (width && height) {
+    canvas.style.aspectRatio = `${width} / ${height}`;
+  }
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) {
+    return;
+  }
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.drawImage(image, 0, 0, width, height);
+}
+
+function disposeImageResult(result) {
+  if (!result) {
+    return;
+  }
+  if (result.kind === 'bitmap' && result.bitmap) {
+    result.bitmap.close?.();
+  }
+  if (result.kind === 'image' && result.image) {
+    result.image.src = '';
+  }
+  if (result.kind === 'blob' && result.blob) {
+    // Nothing to dispose immediately; caller handles URL revocation.
+  }
+}
+
+function createImageLoader() {
+  if (typeof window === 'undefined') {
+    return createFallbackImageLoader();
+  }
+
+  if (typeof window.Worker !== 'function') {
+    return createFallbackImageLoader();
+  }
+
+  try {
+    return createWorkerImageLoader();
+  } catch (error) {
+    console.warn('Failed to initialise worker image loader', error);
+    return createFallbackImageLoader();
+  }
+}
+
+function createWorkerImageLoader() {
+  const worker = new Worker('image-loader.js');
+  let sequence = 0;
+  const pending = new Map();
+
+  worker.addEventListener('message', (event) => {
+    const data = event.data || {};
+    const id = data.id;
+    if (!id || !pending.has(id)) {
+      if (data.bitmap) {
+        data.bitmap.close?.();
+      }
+      return;
+    }
+
+    const { resolve, reject, signal, abortHandler } = pending.get(id);
+    pending.delete(id);
+
+    if (signal && abortHandler) {
+      signal.removeEventListener('abort', abortHandler);
+    }
+
+    if (data.aborted) {
+      reject(new DOMException('Aborted', 'AbortError'));
+      return;
+    }
+
+    if (data.error) {
+      reject(new Error(data.error));
+      return;
+    }
+
+    if (data.bitmap) {
+      resolve({ kind: 'bitmap', bitmap: data.bitmap });
+      return;
+    }
+
+    if (data.buffer) {
+      const blob = new Blob([data.buffer], { type: data.type || 'image/*' });
+      resolve({ kind: 'blob', blob });
+      return;
+    }
+
+    reject(new Error('未知的图片加载结果'));
+  });
+
+  worker.addEventListener('error', (event) => {
+    console.error('Image worker error', event);
+  });
+
+  const load = (url, signal) => {
+    if (!url) {
+      return Promise.reject(new Error('缺少图片地址'));
+    }
+
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    }
+
+    const id = ++sequence;
+
+    return new Promise((resolve, reject) => {
+      const abortHandler = () => {
+        worker.postMessage({ id, type: 'cancel' });
+        pending.delete(id);
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', abortHandler, { once: true });
+      }
+
+      pending.set(id, { resolve, reject, signal, abortHandler });
+      worker.postMessage({ id, url });
+    });
+  };
+
+  const dispose = () => {
+    pending.forEach(({ reject, signal, abortHandler }) => {
+      if (signal && abortHandler) {
+        signal.removeEventListener('abort', abortHandler);
+      }
+      reject(new DOMException('Disposed', 'AbortError'));
+    });
+    pending.clear();
+    worker.terminate();
+  };
+
+  return { load, dispose };
+}
+
+function createFallbackImageLoader() {
+  const load = (url, signal) => {
+    if (!url) {
+      return Promise.reject(new Error('缺少图片地址'));
+    }
+
+    if (signal?.aborted) {
+      return Promise.reject(new DOMException('Aborted', 'AbortError'));
+    }
+
+    return new Promise((resolve, reject) => {
+      const image = new Image();
+      image.decoding = 'async';
+      image.loading = 'lazy';
+
+      const cleanup = () => {
+        image.onload = null;
+        image.onerror = null;
+        if (signal) {
+          signal.removeEventListener('abort', onAbort);
+        }
+      };
+
+      const onAbort = () => {
+        cleanup();
+        reject(new DOMException('Aborted', 'AbortError'));
+      };
+
+      image.onload = () => {
+        cleanup();
+        resolve({ kind: 'image', image });
+      };
+
+      image.onerror = (error) => {
+        cleanup();
+        reject(error instanceof Error ? error : new Error('图片加载失败'));
+      };
+
+      if (signal) {
+        signal.addEventListener('abort', onAbort, { once: true });
+      }
+
+      image.src = url;
+    });
+  };
+
+  const dispose = () => {};
+
+  return { load, dispose };
 }
