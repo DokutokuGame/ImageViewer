@@ -1,5 +1,6 @@
 const directoryListEl = document.getElementById('directory-list');
 const mediaGridEl = document.getElementById('media-grid');
+const mediaScrollContainer = document.querySelector('.media-panel-content');
 const currentRootEl = document.getElementById('current-root');
 const mediaHeadingEl = document.getElementById('media-heading');
 const mediaCountEl = document.getElementById('media-count');
@@ -7,10 +8,25 @@ const selectRootButton = document.getElementById('select-root');
 const openDirectoryButton = document.getElementById('open-directory');
 const tagListEl = document.getElementById('tag-list');
 const filterTagListEl = document.getElementById('filter-tag-list');
+const mediaProgressEl = document.getElementById('media-progress');
+const mediaProgressBarEl = document.getElementById('media-progress-bar');
+const mediaProgressLabelEl = document.getElementById('media-progress-label');
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
+const EXCLUDED_TAGS_STORAGE_KEY = 'media-excluded-tags';
+const TAG_SORT_MODES = {
+  ALPHABETICAL: 'alphabetical',
+  FREQUENCY: 'frequency',
+};
+const NUMBERED_KEYWORD_PATTERN = /^(?:vol|part|no)[0-9]*$/u;
+const STAR_KEYWORD_PATTERN = /^⭐+$/u;
+const alphabeticalCollator = new Intl.Collator(['en', 'zh-Hans'], {
+  sensitivity: 'base',
+  numeric: true,
+});
 const MEDIA_RENDER_BATCH_SIZE = 12;
+const MEDIA_PROGRESS_MIN_ITEMS = MEDIA_RENDER_BATCH_SIZE * 2;
 
 let currentState = {
   root: null,
@@ -20,14 +36,28 @@ let currentState = {
   derivedTags: [],
   activeTag: null,
   keywordIndex: {},
+  tagSortMode: TAG_SORT_MODES.ALPHABETICAL,
+  tagSearchQuery: '',
+  excludedTags: loadExcludedTags(),
+  excludedTagPanelExpanded: false,
 };
 
 let mediaRenderAbortController = null;
 const imageLoader = createImageLoader();
+const lazyThumbnailLoader = createLazyThumbnailLoader();
+let mediaProgressHideTimer = null;
+let mediaProgressTotalCount = 0;
+let tagSearchDraft = currentState.tagSearchQuery || '';
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
     imageLoader.dispose();
+  });
+}
+
+if (lazyThumbnailLoader?.reset) {
+  window.addEventListener('beforeunload', () => {
+    lazyThumbnailLoader.reset();
   });
 }
 
@@ -83,14 +113,46 @@ function updateState(patch) {
     nextState.leaves = [];
   }
 
-  if ('leaves' in patch) {
-    const { tags, keywordIndex } = buildDerivedTags(nextState.leaves);
+  if ('excludedTags' in patch) {
+    nextState.excludedTags = normalizeExcludedTags(nextState.excludedTags);
+    if (
+      nextState.activeTag &&
+      nextState.excludedTags.includes(nextState.activeTag)
+    ) {
+      nextState.activeTag = null;
+    }
+    saveExcludedTags(nextState.excludedTags);
+  }
+
+  if ('leaves' in patch || 'excludedTags' in patch) {
+    const { tags, keywordIndex } = buildDerivedTags(
+      nextState.leaves,
+      nextState.excludedTags
+    );
     nextState.derivedTags = tags;
     nextState.keywordIndex = keywordIndex;
   }
 
   if ('savedTags' in patch && !Array.isArray(nextState.savedTags)) {
     nextState.savedTags = [];
+  }
+
+  if ('tagSortMode' in patch) {
+    nextState.tagSortMode = normalizeTagSortMode(nextState.tagSortMode);
+  }
+
+  if ('tagSearchQuery' in patch && typeof nextState.tagSearchQuery !== 'string') {
+    nextState.tagSearchQuery = '';
+  }
+
+  if ('excludedTagPanelExpanded' in patch) {
+    nextState.excludedTagPanelExpanded = Boolean(
+      nextState.excludedTagPanelExpanded
+    );
+  }
+
+  if ('tagSearchQuery' in patch) {
+    tagSearchDraft = nextState.tagSearchQuery || '';
   }
 
   currentState = nextState;
@@ -164,6 +226,7 @@ function renderTagFilters() {
     return;
   }
 
+  const previousScrollTop = filterTagListEl.scrollTop;
   filterTagListEl.innerHTML = '';
 
   if (!currentState.leaves.length) {
@@ -171,28 +234,77 @@ function renderTagFilters() {
     empty.className = 'filter-tag-empty';
     empty.textContent = '选择目录后会自动生成标签。';
     filterTagListEl.appendChild(empty);
+    restoreFilterTagScroll(previousScrollTop);
     return;
+  }
+
+  const controls = createTagFilterControls();
+  if (controls) {
+    filterTagListEl.appendChild(controls);
+  }
+
+  const excludedSettings = createExcludedTagSettings();
+  if (excludedSettings) {
+    filterTagListEl.appendChild(excludedSettings);
   }
 
   if (!currentState.derivedTags.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
-    empty.textContent = '未发现重复关键词，暂无法生成标签。';
+    empty.textContent = '未发现重复关键词，暂无生成标签。';
     filterTagListEl.appendChild(empty);
+    restoreFilterTagScroll(previousScrollTop);
     return;
   }
 
-  const allButton = createFilterButton('全部', null, currentState.activeTag == null);
-  filterTagListEl.appendChild(allButton);
+  const buttonsContainer = document.createElement('div');
+  buttonsContainer.className = 'filter-tag-button-group';
 
-  currentState.derivedTags.forEach((tag) => {
-    const button = createFilterButton(
-      `${tag.label} (${tag.count})`,
-      tag.id,
-      currentState.activeTag === tag.id
-    );
-    filterTagListEl.appendChild(button);
+  const allButton = createFilterButton('全部', null, currentState.activeTag == null);
+  const allEntry = document.createElement('div');
+  allEntry.className = 'filter-tag-entry';
+  allEntry.appendChild(allButton);
+  buttonsContainer.appendChild(allEntry);
+
+  const filteredTags = getRenderableTags();
+
+  filteredTags.forEach((tag) => {
+    const entry = createFilterTagEntry(tag);
+    buttonsContainer.appendChild(entry);
   });
+
+  filterTagListEl.appendChild(buttonsContainer);
+
+  if (!filteredTags.length) {
+    const empty = document.createElement('span');
+    empty.className = 'filter-tag-empty';
+    empty.textContent = '没有找到匹配的标签。';
+    filterTagListEl.appendChild(empty);
+  }
+
+  restoreFilterTagScroll(previousScrollTop);
+}
+
+function restoreFilterTagScroll(previousScrollTop) {
+  if (!filterTagListEl) {
+    return;
+  }
+
+  const maxScrollTop = Math.max(
+    0,
+    filterTagListEl.scrollHeight - filterTagListEl.clientHeight
+  );
+  const nextScrollTop = Math.max(
+    0,
+    Math.min(
+      typeof previousScrollTop === 'number' ? previousScrollTop : 0,
+      maxScrollTop
+    )
+  );
+
+  if (filterTagListEl.scrollTop !== nextScrollTop) {
+    filterTagListEl.scrollTop = nextScrollTop;
+  }
 }
 
 function createFilterButton(label, tagId, isActive) {
@@ -217,7 +329,254 @@ function createFilterButton(label, tagId, isActive) {
   return button;
 }
 
+function createFilterTagEntry(tag) {
+  const entry = document.createElement('div');
+  entry.className = 'filter-tag-entry';
+
+  const button = createFilterButton(
+    `${tag.label} (${tag.count})`,
+    tag.id,
+    currentState.activeTag === tag.id
+  );
+  entry.appendChild(button);
+
+  const excludeButton = document.createElement('button');
+  excludeButton.type = 'button';
+  excludeButton.className = 'filter-tag-exclude-button';
+  excludeButton.setAttribute('aria-label', `排除标签 ${tag.label}`);
+  excludeButton.title = '从标签列表中排除此标签';
+  excludeButton.textContent = '×';
+  excludeButton.addEventListener('click', (event) =>
+    handleExcludeTag(event, tag)
+  );
+  entry.appendChild(excludeButton);
+
+  return entry;
+}
+
+function handleExcludeTag(event, tag) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!tag?.id) {
+    return;
+  }
+
+  const next = new Set(Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : []);
+  const previousSize = next.size;
+  next.add(tag.id);
+
+  if (next.size === previousSize) {
+    if (currentState.activeTag === tag.id) {
+      updateState({ activeTag: null });
+    }
+    return;
+  }
+
+  const patch = { excludedTags: Array.from(next) };
+  if (currentState.activeTag === tag.id) {
+    patch.activeTag = null;
+  }
+  updateState(patch);
+}
+
+function handleRestoreExcludedTag(tagId) {
+  if (!tagId) {
+    return;
+  }
+
+  const current = Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : [];
+  if (!current.includes(tagId)) {
+    return;
+  }
+
+  const next = current.filter((item) => item !== tagId);
+  updateState({ excludedTags: next });
+}
+
+function handleExcludedTagFormSubmit(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const input = form.querySelector('.excluded-tag-input');
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const tokens = extractKeywords(input.value || '');
+  if (!tokens.length) {
+    input.value = '';
+    input.focus?.();
+    return;
+  }
+
+  const next = new Set(Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : []);
+  let added = false;
+  for (const token of tokens) {
+    const previousSize = next.size;
+    next.add(token);
+    if (next.size !== previousSize) {
+      added = true;
+    }
+  }
+
+  if (added) {
+    const patch = { excludedTags: Array.from(next) };
+    if (currentState.activeTag && next.has(currentState.activeTag)) {
+      patch.activeTag = null;
+    }
+    updateState(patch);
+  }
+
+  input.value = '';
+  input.focus?.();
+}
+
+function createExcludedTagSettings() {
+  const container = document.createElement('div');
+  container.className = 'excluded-tag-settings';
+
+  const header = document.createElement('div');
+  header.className = 'excluded-tag-header';
+
+  const title = document.createElement('h4');
+  title.className = 'excluded-tag-title';
+  title.textContent = '标签排除';
+  header.appendChild(title);
+
+  const excluded = Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : [];
+
+  const count = document.createElement('span');
+  count.className = 'excluded-tag-count';
+  count.textContent = `(${excluded.length})`;
+  header.appendChild(count);
+
+  const toggleButton = document.createElement('button');
+  toggleButton.type = 'button';
+  toggleButton.className = 'excluded-tag-toggle-button';
+  toggleButton.setAttribute(
+    'aria-expanded',
+    String(Boolean(currentState.excludedTagPanelExpanded))
+  );
+  toggleButton.textContent = currentState.excludedTagPanelExpanded
+    ? '收起'
+    : '展开';
+  toggleButton.setAttribute(
+    'aria-label',
+    currentState.excludedTagPanelExpanded ? '收起标签排除设置' : '展开标签排除设置'
+  );
+  toggleButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextOpen = !currentState.excludedTagPanelExpanded;
+    updateState({ excludedTagPanelExpanded: nextOpen });
+  });
+  header.appendChild(toggleButton);
+
+  header.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLButtonElement) {
+      return;
+    }
+    const nextOpen = !currentState.excludedTagPanelExpanded;
+    updateState({ excludedTagPanelExpanded: nextOpen });
+  });
+
+  container.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'excluded-tag-body';
+  if (!currentState.excludedTagPanelExpanded) {
+    body.hidden = true;
+  }
+
+  const help = document.createElement('p');
+  help.className = 'excluded-tag-help';
+  help.textContent = '被排除的标签不会在筛选列表中显示，子文件夹也不会按照这些标签分组。';
+  body.appendChild(help);
+
+  const form = document.createElement('form');
+  form.className = 'excluded-tag-form';
+  form.addEventListener('submit', handleExcludedTagFormSubmit);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'excluded-tag-input';
+  input.placeholder = '输入要排除的标签';
+  input.setAttribute('aria-label', '输入要排除的标签');
+  form.appendChild(input);
+
+  const addButton = document.createElement('button');
+  addButton.type = 'submit';
+  addButton.className = 'excluded-tag-add-button';
+  addButton.textContent = '添加';
+  form.appendChild(addButton);
+
+  body.appendChild(form);
+
+  if (!excluded.length) {
+    const empty = document.createElement('span');
+    empty.className = 'excluded-tag-empty';
+    empty.textContent = '尚未排除任何标签。';
+    body.appendChild(empty);
+    container.appendChild(body);
+    return container;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'excluded-tag-list';
+
+  const items = excluded
+    .map((id) => ({ id, label: humanizeKeyword(id) }))
+    .sort((a, b) => {
+      const starCompare = compareStarPriority(a, b);
+      if (starCompare !== 0) {
+        return starCompare;
+      }
+      return compareTagsAlphabetically(a, b);
+    });
+
+  items.forEach((item) => {
+    const listItem = document.createElement('li');
+    listItem.className = 'excluded-tag-item';
+
+    const label = document.createElement('span');
+    label.className = 'excluded-tag-label';
+    label.textContent = item.label;
+    listItem.appendChild(label);
+
+    const restoreButton = document.createElement('button');
+    restoreButton.type = 'button';
+    restoreButton.className = 'excluded-tag-restore-button';
+    restoreButton.textContent = '恢复';
+    restoreButton.addEventListener('click', () =>
+      handleRestoreExcludedTag(item.id)
+    );
+    listItem.appendChild(restoreButton);
+
+    list.appendChild(listItem);
+  });
+
+  body.appendChild(list);
+
+  container.appendChild(body);
+
+  return container;
+}
+
 function renderDirectoryList() {
+  const previousScrollTop = directoryListEl.scrollTop;
   directoryListEl.innerHTML = '';
   const visibleLeaves = getVisibleLeaves();
 
@@ -235,6 +594,7 @@ function renderDirectoryList() {
         : '请选择一个目录开始。';
     }
     directoryListEl.appendChild(emptyMessage);
+    directoryListEl.scrollTop = 0;
     return;
   }
 
@@ -268,6 +628,15 @@ function renderDirectoryList() {
 
     directoryListEl.appendChild(item);
   });
+
+  const maxScrollTop = Math.max(
+    0,
+    directoryListEl.scrollHeight - directoryListEl.clientHeight
+  );
+  directoryListEl.scrollTop = Math.max(
+    0,
+    Math.min(previousScrollTop, maxScrollTop)
+  );
 }
 
 function updateOpenDirectoryButton(leaf) {
@@ -339,6 +708,8 @@ async function handleSavedTagSelection(tag) {
   if (!mediaApi?.scanDirectory) {
     return;
   }
+  showMediaPendingProgress('正在加载已保存的目录…');
+
   try {
     const leaves = await mediaApi.scanDirectory(tag.path);
     updateState({
@@ -349,6 +720,7 @@ async function handleSavedTagSelection(tag) {
     });
   } catch (error) {
     console.error('Failed to load directory from tag', error);
+    resetMediaProgress();
   }
 }
 
@@ -378,7 +750,9 @@ function renderMedia() {
   }
   mediaRenderAbortController = null;
   delete mediaGridEl.dataset.loading;
+  lazyThumbnailLoader.reset?.();
   mediaGridEl.innerHTML = '';
+  resetMediaProgress();
 
   updateOpenDirectoryButton(null);
 
@@ -423,14 +797,20 @@ function extractKeywords(name) {
     .map((token) => token.trim())
     .filter(Boolean)
     .map((token) => {
-      if (/^⭐+$/u.test(token)) {
+      if (isStarKeyword(token)) {
         return token;
       }
       return token.toLowerCase();
     })
     .filter((token) => {
-      if (/^⭐+$/u.test(token)) {
+      if (isStarKeyword(token)) {
         return true;
+      }
+      if (/^\d+$/u.test(token)) {
+        return false;
+      }
+      if (NUMBERED_KEYWORD_PATTERN.test(token)) {
+        return false;
       }
       return token.length > 1;
     });
@@ -439,7 +819,7 @@ function extractKeywords(name) {
 }
 
 function humanizeKeyword(keyword) {
-  if (/^⭐+$/u.test(keyword)) {
+  if (isStarKeyword(keyword)) {
     return keyword;
   }
   if (/^[\p{Script=Han}]+$/u.test(keyword)) {
@@ -456,9 +836,10 @@ function getLeafName(leaf) {
   return segments.length ? segments[segments.length - 1] : leaf.displayPath;
 }
 
-function buildDerivedTags(leaves) {
+function buildDerivedTags(leaves, excludedTags) {
   const keywordIndex = {};
   const buckets = new Map();
+  const excluded = new Set(Array.isArray(excludedTags) ? excludedTags : []);
 
   const safeLeaves = Array.isArray(leaves) ? leaves : [];
 
@@ -468,6 +849,9 @@ function buildDerivedTags(leaves) {
     keywordIndex[leaf.path] = keywords;
 
     for (const keyword of keywords) {
+      if (excluded.has(keyword)) {
+        continue;
+      }
       const bucket = buckets.get(keyword) ?? {
         id: keyword,
         label: humanizeKeyword(keyword),
@@ -478,26 +862,285 @@ function buildDerivedTags(leaves) {
     }
   }
 
-  const tags = Array.from(buckets.values())
-    .filter((bucket) => bucket.count >= MIN_TAG_OCCURRENCE)
-    .sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      return a.label.localeCompare(b.label, 'zh-Hans');
-    });
+  const tags = Array.from(buckets.values()).filter(
+    (bucket) => bucket.count >= MIN_TAG_OCCURRENCE
+  );
 
   return { tags, keywordIndex };
 }
 
-function getVisibleLeaves() {
-  if (!currentState.activeTag) {
-    return currentState.leaves;
-  }
-  return currentState.leaves.filter((leaf) => {
-    const keywords = currentState.keywordIndex[leaf.path] || [];
-    return keywords.includes(currentState.activeTag);
+function getRenderableTags() {
+  const sortMode = normalizeTagSortMode(currentState.tagSortMode);
+  const query = currentState.tagSearchQuery.trim().toLowerCase();
+
+  const filtered = currentState.derivedTags.filter((tag) => {
+    if (!query) {
+      return true;
+    }
+    const label = `${tag.label || ''}`.toLowerCase();
+    return label.includes(query) || tag.id.includes(query);
   });
+
+  return filtered.sort((a, b) => compareTags(a, b, sortMode));
+}
+
+function compareTags(a, b, mode) {
+  const starComparison = compareStarPriority(a, b);
+  if (starComparison !== 0) {
+    return starComparison;
+  }
+
+  if (mode === TAG_SORT_MODES.FREQUENCY) {
+    if (b.count !== a.count) {
+      return b.count - a.count;
+    }
+    return compareTagsAlphabetically(a, b);
+  }
+
+  return compareTagsAlphabetically(a, b);
+}
+
+function compareTagsAlphabetically(a, b) {
+  const groupA = getAlphabeticalGroup(a.label);
+  const groupB = getAlphabeticalGroup(b.label);
+
+  if (groupA !== groupB) {
+    return groupA - groupB;
+  }
+
+  return alphabeticalCollator.compare(a.label, b.label);
+}
+
+function normalizeExcludedTags(list) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+
+  const normalized = new Set();
+
+  for (const item of list) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (isStarKeyword(trimmed)) {
+      normalized.add(trimmed);
+    } else {
+      normalized.add(trimmed.toLowerCase());
+    }
+  }
+
+  return Array.from(normalized);
+}
+
+function loadExcludedTags() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storage = window.localStorage;
+    if (!storage) {
+      return [];
+    }
+    const raw = storage.getItem(EXCLUDED_TAGS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return normalizeExcludedTags(parsed);
+  } catch (error) {
+    console.warn('Failed to load excluded tags', error);
+    return [];
+  }
+}
+
+function saveExcludedTags(tags) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const storage = window.localStorage;
+    if (!storage) {
+      return;
+    }
+    const normalized = normalizeExcludedTags(tags);
+    storage.setItem(EXCLUDED_TAGS_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (error) {
+    console.warn('Failed to save excluded tags', error);
+  }
+}
+
+function getAlphabeticalGroup(label) {
+  if (isStarLabel(label)) {
+    return -1;
+  }
+
+  if (!label) {
+    return 1;
+  }
+
+  const firstChar = label.trim().charAt(0);
+  if (/^[A-Za-z]$/.test(firstChar)) {
+    return 0;
+  }
+  return 1;
+}
+
+function normalizeTagSortMode(mode) {
+  return mode === TAG_SORT_MODES.FREQUENCY
+    ? TAG_SORT_MODES.FREQUENCY
+    : TAG_SORT_MODES.ALPHABETICAL;
+}
+
+function handleTagSearchInput(event) {
+  const target = event?.currentTarget;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+  tagSearchDraft = target.value ?? '';
+}
+
+function handleTagSearchFormSubmit(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  if (form instanceof HTMLFormElement) {
+    const input = form.querySelector('.filter-tag-search-input');
+    if (input instanceof HTMLInputElement) {
+      tagSearchDraft = input.value ?? '';
+    }
+  }
+
+  if (tagSearchDraft === currentState.tagSearchQuery) {
+    return;
+  }
+
+  updateState({ tagSearchQuery: tagSearchDraft });
+
+  const restoreFocus = () => {
+    const nextInput = document.getElementById('tag-search-input');
+    if (nextInput instanceof HTMLInputElement) {
+      if (typeof nextInput.focus === 'function') {
+        try {
+          nextInput.focus({ preventScroll: true });
+        } catch (error) {
+          try {
+            nextInput.focus();
+          } catch (focusError) {
+            // Ignore focus errors in unsupported environments.
+          }
+        }
+      }
+      try {
+        const position = typeof tagSearchDraft === 'string'
+          ? tagSearchDraft.length
+          : nextInput.value.length;
+        nextInput.setSelectionRange(position, position);
+      } catch (error) {
+        // Ignore selection errors in unsupported environments.
+      }
+    }
+  };
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(restoreFocus);
+  } else {
+    window.setTimeout(restoreFocus, 0);
+  }
+}
+
+function createTagFilterControls() {
+  const container = document.createElement('div');
+  container.className = 'filter-tag-controls';
+
+  const searchWrapper = document.createElement('div');
+  searchWrapper.className = 'filter-tag-search';
+
+  const searchForm = document.createElement('form');
+  searchForm.className = 'filter-tag-search-form';
+  searchForm.addEventListener('submit', handleTagSearchFormSubmit);
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.id = 'tag-search-input';
+  searchInput.className = 'filter-tag-search-input';
+  searchInput.placeholder = '搜索标签';
+  searchInput.setAttribute('aria-label', '搜索标签');
+  const searchValue =
+    typeof tagSearchDraft === 'string'
+      ? tagSearchDraft
+      : currentState.tagSearchQuery || '';
+  searchInput.value = searchValue;
+  if (searchValue !== tagSearchDraft) {
+    tagSearchDraft = searchValue;
+  }
+  searchInput.addEventListener('input', handleTagSearchInput);
+
+  const confirmButton = document.createElement('button');
+  confirmButton.type = 'submit';
+  confirmButton.className = 'filter-tag-search-submit';
+  confirmButton.textContent = '确认';
+
+  searchForm.appendChild(searchInput);
+  searchForm.appendChild(confirmButton);
+  searchWrapper.appendChild(searchForm);
+  container.appendChild(searchWrapper);
+
+  const sortWrapper = document.createElement('div');
+  sortWrapper.className = 'filter-tag-sort';
+
+  const sortSelect = document.createElement('select');
+  sortSelect.id = 'tag-sort-select';
+  sortSelect.className = 'filter-tag-sort-select';
+  sortSelect.setAttribute('aria-label', '标签排序');
+
+  const options = [
+    { value: TAG_SORT_MODES.ALPHABETICAL, label: '按首字母' },
+    { value: TAG_SORT_MODES.FREQUENCY, label: '按数量' },
+  ];
+
+  options.forEach((option) => {
+    const node = document.createElement('option');
+    node.value = option.value;
+    node.textContent = option.label;
+    sortSelect.appendChild(node);
+  });
+
+  sortSelect.value = normalizeTagSortMode(currentState.tagSortMode);
+  sortSelect.addEventListener('change', (event) => {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    const value = normalizeTagSortMode(target.value);
+    if (value === currentState.tagSortMode) {
+      return;
+    }
+    updateState({ tagSortMode: value });
+  });
+
+  sortWrapper.appendChild(sortSelect);
+  container.appendChild(sortWrapper);
+
+  return container;
+}
+
+function getVisibleLeaves() {
+  const baseLeaves = !currentState.activeTag
+    ? currentState.leaves
+    : currentState.leaves.filter((leaf) => {
+        const keywords = currentState.keywordIndex[leaf.path] || [];
+        return keywords.includes(currentState.activeTag);
+      });
+
+  const visibleLeaves = Array.isArray(baseLeaves) ? baseLeaves.slice() : [];
+  visibleLeaves.sort(compareLeavesByStarPriority);
+  return visibleLeaves;
 }
 
 function ensureSelection() {
@@ -529,22 +1172,34 @@ function startMediaRender(files) {
   mediaRenderAbortController = controller;
   mediaGridEl.dataset.loading = 'true';
 
-  renderMediaIncrementally(files, controller.signal)
+  const total = Array.isArray(files) ? files.length : 0;
+  beginMediaProgress(total);
+
+  let renderFailed = false;
+
+  renderMediaIncrementally(files, controller.signal, total)
     .catch((error) => {
       if (error?.name !== 'AbortError') {
+        renderFailed = true;
         console.error('Failed to render media items', error);
+        failMediaProgress();
       }
     })
     .finally(() => {
       if (mediaRenderAbortController === controller) {
         delete mediaGridEl.dataset.loading;
         mediaRenderAbortController = null;
+        if (!renderFailed) {
+          finishMediaProgress();
+        }
       }
     });
 }
 
-async function renderMediaIncrementally(files, signal) {
+async function renderMediaIncrementally(files, signal, totalCount) {
   const queue = Array.isArray(files) ? files.slice() : [];
+  const total = typeof totalCount === 'number' ? totalCount : queue.length;
+  let renderedCount = 0;
 
   while (queue.length && !signal.aborted) {
     const fragment = document.createDocumentFragment();
@@ -554,6 +1209,11 @@ async function renderMediaIncrementally(files, signal) {
       const file = queue.shift();
       fragment.appendChild(createMediaCard(file, signal));
       count += 1;
+      renderedCount += 1;
+      if (total > 0) {
+        renderedCount = Math.min(renderedCount, total);
+      }
+      updateMediaProgress(renderedCount);
     }
 
     mediaGridEl.appendChild(fragment);
@@ -578,6 +1238,203 @@ function waitForNextFrame() {
   });
 }
 
+function beginMediaProgress(total) {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  if (!total || total < MEDIA_PROGRESS_MIN_ITEMS) {
+    resetMediaProgress();
+    return;
+  }
+
+  mediaProgressTotalCount = total;
+  mediaProgressEl.hidden = false;
+  mediaProgressEl.dataset.state = 'loading';
+  updateMediaProgress(0);
+}
+
+function showMediaPendingProgress(message) {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  mediaProgressTotalCount = 0;
+  mediaProgressEl.hidden = false;
+  mediaProgressEl.dataset.state = 'pending';
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = '0%';
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = message || '正在加载…';
+  }
+}
+
+function updateMediaProgress(loaded) {
+  if (!mediaProgressEl || mediaProgressTotalCount <= 0) {
+    return;
+  }
+
+  const total = mediaProgressTotalCount;
+  const clampedLoaded = Math.max(0, Math.min(loaded, total));
+  const percent = total > 0 ? (clampedLoaded / total) * 100 : 0;
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = `${percent}%`;
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = `加载中 ${clampedLoaded} / ${total}`;
+  }
+}
+
+function finishMediaProgress() {
+  if (!mediaProgressEl || mediaProgressTotalCount <= 0) {
+    resetMediaProgress();
+    return;
+  }
+
+  updateMediaProgress(mediaProgressTotalCount);
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = '加载完成';
+  }
+
+  mediaProgressEl.dataset.state = 'complete';
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+  }
+
+  mediaProgressHideTimer = window.setTimeout(() => {
+    resetMediaProgress();
+  }, 800);
+}
+
+function failMediaProgress() {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressTotalCount > 0) {
+    updateMediaProgress(mediaProgressTotalCount);
+    if (mediaProgressLabelEl) {
+      mediaProgressLabelEl.textContent = '加载失败';
+    }
+    mediaProgressEl.dataset.state = 'error';
+    if (mediaProgressHideTimer) {
+      window.clearTimeout(mediaProgressHideTimer);
+    }
+    mediaProgressHideTimer = window.setTimeout(() => {
+      resetMediaProgress();
+    }, 1200);
+    return;
+  }
+
+  resetMediaProgress();
+}
+
+function resetMediaProgress() {
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  mediaProgressTotalCount = 0;
+
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  mediaProgressEl.hidden = true;
+  mediaProgressEl.removeAttribute('data-state');
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = '0%';
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = '';
+  }
+}
+
+function compareLeavesByStarPriority(a, b) {
+  const aStar = isStarLeaf(a);
+  const bStar = isStarLeaf(b);
+
+  if (aStar === bStar) {
+    return 0;
+  }
+
+  return aStar ? -1 : 1;
+}
+
+function isStarKeyword(keyword) {
+  return typeof keyword === 'string' && STAR_KEYWORD_PATTERN.test(keyword);
+}
+
+function isStarLabel(label) {
+  return typeof label === 'string' && STAR_KEYWORD_PATTERN.test(label.trim());
+}
+
+function isStarTag(tag) {
+  if (!tag) {
+    return false;
+  }
+
+  if (isStarKeyword(tag.id)) {
+    return true;
+  }
+
+  if (isStarLabel(tag.label)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isStarLeaf(leaf) {
+  if (!leaf) {
+    return false;
+  }
+
+  if (leaf.path) {
+    const keywords = currentState.keywordIndex?.[leaf.path];
+    if (Array.isArray(keywords) && keywords.some(isStarKeyword)) {
+      return true;
+    }
+  }
+
+  if (typeof leaf.displayPath === 'string' && leaf.displayPath.includes('⭐')) {
+    return true;
+  }
+
+  return false;
+}
+
+function compareStarPriority(a, b) {
+  const aStar = isStarTag(a);
+  const bStar = isStarTag(b);
+
+  if (aStar === bStar) {
+    return 0;
+  }
+
+  return aStar ? -1 : 1;
+}
+
 function createMediaCard(file, signal) {
   const card = document.createElement('article');
   card.className = 'media-card';
@@ -593,9 +1450,7 @@ function createMediaCard(file, signal) {
     thumb.className = 'media-thumb media-thumb-image';
     thumb.style.aspectRatio = '4 / 3';
     thumb.style.width = '100%';
-    if (resolvedUrl) {
-      loadImageThumbnail(thumb, resolvedUrl, signal);
-    }
+    registerLazyThumbnail(thumb, resolvedUrl, signal);
   } else {
     thumb = document.createElement('video');
     if (resolvedUrl) {
@@ -662,6 +1517,18 @@ function createMediaCard(file, signal) {
   card.appendChild(info);
 
   return card;
+}
+
+function registerLazyThumbnail(canvas, url, signal) {
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  if (!url) {
+    return;
+  }
+
+  lazyThumbnailLoader.observe?.(canvas, url, signal);
 }
 
 function loadImageThumbnail(canvas, url, signal) {
@@ -945,4 +1812,112 @@ function createFallbackImageLoader() {
   const dispose = () => {};
 
   return { load, dispose };
+}
+
+function createLazyThumbnailLoader() {
+  const immediateLoader = {
+    observe: (canvas, url, signal) => {
+      if (signal?.aborted) {
+        return;
+      }
+      loadImageThumbnail(canvas, url, signal);
+    },
+    reset: () => {},
+  };
+
+  if (typeof window === 'undefined') {
+    return immediateLoader;
+  }
+
+  if (typeof window.IntersectionObserver !== 'function') {
+    return immediateLoader;
+  }
+
+  const targets = new Map();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+
+        const element = entry.target;
+        const payload = targets.get(element);
+        if (!payload) {
+          continue;
+        }
+
+        observer.unobserve(element);
+        targets.delete(element);
+
+        if (payload.signal && payload.abortHandler) {
+          payload.signal.removeEventListener('abort', payload.abortHandler);
+        }
+
+        if (payload.signal?.aborted) {
+          continue;
+        }
+
+        loadImageThumbnail(element, payload.url, payload.signal);
+      }
+    },
+    {
+      root: mediaScrollContainer || null,
+      rootMargin: '400px 0px',
+      threshold: 0.01,
+    }
+  );
+
+  const observe = (canvas, url, signal) => {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    if (!url) {
+      return;
+    }
+
+    if (signal?.aborted) {
+      return;
+    }
+
+    if (targets.has(canvas)) {
+      const existing = targets.get(canvas);
+      if (existing?.signal && existing.abortHandler) {
+        existing.signal.removeEventListener('abort', existing.abortHandler);
+      }
+      targets.delete(canvas);
+    }
+
+    const payload = { url, signal };
+
+    if (signal) {
+      const abortHandler = () => {
+        observer.unobserve(canvas);
+        const current = targets.get(canvas);
+        if (current?.signal && current.abortHandler) {
+          current.signal.removeEventListener('abort', current.abortHandler);
+        }
+        targets.delete(canvas);
+      };
+      signal.addEventListener('abort', abortHandler, { once: true });
+      payload.abortHandler = abortHandler;
+    }
+
+    targets.set(canvas, payload);
+    observer.observe(canvas);
+  };
+
+  const reset = () => {
+    targets.forEach((payload, canvas) => {
+      if (payload.signal && payload.abortHandler) {
+        payload.signal.removeEventListener('abort', payload.abortHandler);
+      }
+      observer.unobserve(canvas);
+    });
+    targets.clear();
+    observer.disconnect();
+  };
+
+  return { observe, reset };
 }
