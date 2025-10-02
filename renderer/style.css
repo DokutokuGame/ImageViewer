@@ -161,7 +161,7 @@ body {
 .directory-columns {
   flex: 1;
   display: grid;
-  grid-template-columns: 300px 1fr;
+  grid-template-columns: 200px 1fr;
   gap: 1rem;
   min-height: 0;
   overflow: hidden;
@@ -209,7 +209,7 @@ body {
 }
 
 .filter-tag-search-input {
-  width: 100%;
+  width: 75%;
   padding: 0.4rem 0.6rem;
   border: 1px solid var(--border-color);
   border-radius: 6px;
