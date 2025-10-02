@@ -1,5 +1,6 @@
 const directoryListEl = document.getElementById('directory-list');
 const mediaGridEl = document.getElementById('media-grid');
+const mediaScrollContainer = document.querySelector('.media-panel-content');
 const currentRootEl = document.getElementById('current-root');
 const mediaHeadingEl = document.getElementById('media-heading');
 const mediaCountEl = document.getElementById('media-count');
@@ -24,10 +25,17 @@ let currentState = {
 
 let mediaRenderAbortController = null;
 const imageLoader = createImageLoader();
+const lazyThumbnailLoader = createLazyThumbnailLoader();
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
     imageLoader.dispose();
+  });
+}
+
+if (lazyThumbnailLoader?.reset) {
+  window.addEventListener('beforeunload', () => {
+    lazyThumbnailLoader.reset();
   });
 }
 
@@ -378,6 +386,7 @@ function renderMedia() {
   }
   mediaRenderAbortController = null;
   delete mediaGridEl.dataset.loading;
+  lazyThumbnailLoader.reset?.();
   mediaGridEl.innerHTML = '';
 
   updateOpenDirectoryButton(null);
@@ -593,9 +602,7 @@ function createMediaCard(file, signal) {
     thumb.className = 'media-thumb media-thumb-image';
     thumb.style.aspectRatio = '4 / 3';
     thumb.style.width = '100%';
-    if (resolvedUrl) {
-      loadImageThumbnail(thumb, resolvedUrl, signal);
-    }
+    registerLazyThumbnail(thumb, resolvedUrl, signal);
   } else {
     thumb = document.createElement('video');
     if (resolvedUrl) {
@@ -662,6 +669,18 @@ function createMediaCard(file, signal) {
   card.appendChild(info);
 
   return card;
+}
+
+function registerLazyThumbnail(canvas, url, signal) {
+  if (!(canvas instanceof HTMLCanvasElement)) {
+    return;
+  }
+
+  if (!url) {
+    return;
+  }
+
+  lazyThumbnailLoader.observe?.(canvas, url, signal);
 }
 
 function loadImageThumbnail(canvas, url, signal) {
@@ -945,4 +964,112 @@ function createFallbackImageLoader() {
   const dispose = () => {};
 
   return { load, dispose };
+}
+
+function createLazyThumbnailLoader() {
+  const immediateLoader = {
+    observe: (canvas, url, signal) => {
+      if (signal?.aborted) {
+        return;
+      }
+      loadImageThumbnail(canvas, url, signal);
+    },
+    reset: () => {},
+  };
+
+  if (typeof window === 'undefined') {
+    return immediateLoader;
+  }
+
+  if (typeof window.IntersectionObserver !== 'function') {
+    return immediateLoader;
+  }
+
+  const targets = new Map();
+  const observer = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        if (!entry.isIntersecting) {
+          continue;
+        }
+
+        const element = entry.target;
+        const payload = targets.get(element);
+        if (!payload) {
+          continue;
+        }
+
+        observer.unobserve(element);
+        targets.delete(element);
+
+        if (payload.signal && payload.abortHandler) {
+          payload.signal.removeEventListener('abort', payload.abortHandler);
+        }
+
+        if (payload.signal?.aborted) {
+          continue;
+        }
+
+        loadImageThumbnail(element, payload.url, payload.signal);
+      }
+    },
+    {
+      root: mediaScrollContainer || null,
+      rootMargin: '400px 0px',
+      threshold: 0.01,
+    }
+  );
+
+  const observe = (canvas, url, signal) => {
+    if (!(canvas instanceof HTMLCanvasElement)) {
+      return;
+    }
+
+    if (!url) {
+      return;
+    }
+
+    if (signal?.aborted) {
+      return;
+    }
+
+    if (targets.has(canvas)) {
+      const existing = targets.get(canvas);
+      if (existing?.signal && existing.abortHandler) {
+        existing.signal.removeEventListener('abort', existing.abortHandler);
+      }
+      targets.delete(canvas);
+    }
+
+    const payload = { url, signal };
+
+    if (signal) {
+      const abortHandler = () => {
+        observer.unobserve(canvas);
+        const current = targets.get(canvas);
+        if (current?.signal && current.abortHandler) {
+          current.signal.removeEventListener('abort', current.abortHandler);
+        }
+        targets.delete(canvas);
+      };
+      signal.addEventListener('abort', abortHandler, { once: true });
+      payload.abortHandler = abortHandler;
+    }
+
+    targets.set(canvas, payload);
+    observer.observe(canvas);
+  };
+
+  const reset = () => {
+    targets.forEach((payload, canvas) => {
+      if (payload.signal && payload.abortHandler) {
+        payload.signal.removeEventListener('abort', payload.abortHandler);
+      }
+      observer.unobserve(canvas);
+    });
+    targets.clear();
+    observer.disconnect();
+  };
+
+  return { observe, reset };
 }
