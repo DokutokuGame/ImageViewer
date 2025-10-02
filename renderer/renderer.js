@@ -709,13 +709,16 @@ function createTagFilterControls() {
 }
 
 function getVisibleLeaves() {
-  if (!currentState.activeTag) {
-    return currentState.leaves;
-  }
-  return currentState.leaves.filter((leaf) => {
-    const keywords = currentState.keywordIndex[leaf.path] || [];
-    return keywords.includes(currentState.activeTag);
-  });
+  const baseLeaves = !currentState.activeTag
+    ? currentState.leaves
+    : currentState.leaves.filter((leaf) => {
+        const keywords = currentState.keywordIndex[leaf.path] || [];
+        return keywords.includes(currentState.activeTag);
+      });
+
+  const visibleLeaves = Array.isArray(baseLeaves) ? baseLeaves.slice() : [];
+  visibleLeaves.sort(compareLeavesByStarPriority);
+  return visibleLeaves;
 }
 
 function ensureSelection() {
@@ -945,6 +948,17 @@ function resetMediaProgress() {
   }
 }
 
+function compareLeavesByStarPriority(a, b) {
+  const aStar = isStarLeaf(a);
+  const bStar = isStarLeaf(b);
+
+  if (aStar === bStar) {
+    return 0;
+  }
+
+  return aStar ? -1 : 1;
+}
+
 function isStarKeyword(keyword) {
   return typeof keyword === 'string' && STAR_KEYWORD_PATTERN.test(keyword);
 }
@@ -963,6 +977,25 @@ function isStarTag(tag) {
   }
 
   if (isStarLabel(tag.label)) {
+    return true;
+  }
+
+  return false;
+}
+
+function isStarLeaf(leaf) {
+  if (!leaf) {
+    return false;
+  }
+
+  if (leaf.path) {
+    const keywords = currentState.keywordIndex?.[leaf.path];
+    if (Array.isArray(keywords) && keywords.some(isStarKeyword)) {
+      return true;
+    }
+  }
+
+  if (typeof leaf.displayPath === 'string' && leaf.displayPath.includes('⭐')) {
     return true;
   }
 
