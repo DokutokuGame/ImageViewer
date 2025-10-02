@@ -226,6 +226,7 @@ function renderTagFilters() {
     return;
   }
 
+  const previousScrollTop = filterTagListEl.scrollTop;
   filterTagListEl.innerHTML = '';
 
   if (!currentState.leaves.length) {
@@ -233,6 +234,7 @@ function renderTagFilters() {
     empty.className = 'filter-tag-empty';
     empty.textContent = '选择目录后会自动生成标签。';
     filterTagListEl.appendChild(empty);
+    restoreFilterTagScroll(previousScrollTop);
     return;
   }
 
@@ -251,6 +253,7 @@ function renderTagFilters() {
     empty.className = 'filter-tag-empty';
     empty.textContent = '未发现重复关键词，暂无生成标签。';
     filterTagListEl.appendChild(empty);
+    restoreFilterTagScroll(previousScrollTop);
     return;
   }
 
@@ -277,6 +280,30 @@ function renderTagFilters() {
     empty.className = 'filter-tag-empty';
     empty.textContent = '没有找到匹配的标签。';
     filterTagListEl.appendChild(empty);
+  }
+
+  restoreFilterTagScroll(previousScrollTop);
+}
+
+function restoreFilterTagScroll(previousScrollTop) {
+  if (!filterTagListEl) {
+    return;
+  }
+
+  const maxScrollTop = Math.max(
+    0,
+    filterTagListEl.scrollHeight - filterTagListEl.clientHeight
+  );
+  const nextScrollTop = Math.max(
+    0,
+    Math.min(
+      typeof previousScrollTop === 'number' ? previousScrollTop : 0,
+      maxScrollTop
+    )
+  );
+
+  if (filterTagListEl.scrollTop !== nextScrollTop) {
+    filterTagListEl.scrollTop = nextScrollTop;
   }
 }
 

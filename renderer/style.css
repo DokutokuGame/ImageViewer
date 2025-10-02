@@ -161,7 +161,7 @@ body {
 .directory-columns {
   flex: 1;
   display: grid;
-  grid-template-columns: 200px 1fr;
+  grid-template-columns: 300px 1fr;
   gap: 1rem;
   min-height: 0;
   overflow: hidden;
