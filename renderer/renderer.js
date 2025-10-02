@@ -14,6 +14,7 @@ const mediaProgressLabelEl = document.getElementById('media-progress-label');
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
+const EXCLUDED_TAGS_STORAGE_KEY = 'media-excluded-tags';
 const TAG_SORT_MODES = {
   ALPHABETICAL: 'alphabetical',
   FREQUENCY: 'frequency',
@@ -37,6 +38,7 @@ let currentState = {
   keywordIndex: {},
   tagSortMode: TAG_SORT_MODES.ALPHABETICAL,
   tagSearchQuery: '',
+  excludedTags: loadExcludedTags(),
 };
 
 let mediaRenderAbortController = null;
@@ -109,8 +111,22 @@ function updateState(patch) {
     nextState.leaves = [];
   }
 
-  if ('leaves' in patch) {
-    const { tags, keywordIndex } = buildDerivedTags(nextState.leaves);
+  if ('excludedTags' in patch) {
+    nextState.excludedTags = normalizeExcludedTags(nextState.excludedTags);
+    if (
+      nextState.activeTag &&
+      nextState.excludedTags.includes(nextState.activeTag)
+    ) {
+      nextState.activeTag = null;
+    }
+    saveExcludedTags(nextState.excludedTags);
+  }
+
+  if ('leaves' in patch || 'excludedTags' in patch) {
+    const { tags, keywordIndex } = buildDerivedTags(
+      nextState.leaves,
+      nextState.excludedTags
+    );
     nextState.derivedTags = tags;
     nextState.keywordIndex = keywordIndex;
   }
@@ -208,6 +224,16 @@ function renderTagFilters() {
     return;
   }
 
+  const controls = createTagFilterControls();
+  if (controls) {
+    filterTagListEl.appendChild(controls);
+  }
+
+  const excludedSettings = createExcludedTagSettings();
+  if (excludedSettings) {
+    filterTagListEl.appendChild(excludedSettings);
+  }
+
   if (!currentState.derivedTags.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
@@ -216,26 +242,20 @@ function renderTagFilters() {
     return;
   }
 
-  const controls = createTagFilterControls();
-  if (controls) {
-    filterTagListEl.appendChild(controls);
-  }
-
   const buttonsContainer = document.createElement('div');
   buttonsContainer.className = 'filter-tag-button-group';
 
   const allButton = createFilterButton('全部', null, currentState.activeTag == null);
-  buttonsContainer.appendChild(allButton);
+  const allEntry = document.createElement('div');
+  allEntry.className = 'filter-tag-entry';
+  allEntry.appendChild(allButton);
+  buttonsContainer.appendChild(allEntry);
 
   const filteredTags = getRenderableTags();
 
   filteredTags.forEach((tag) => {
-    const button = createFilterButton(
-      `${tag.label} (${tag.count})`,
-      tag.id,
-      currentState.activeTag === tag.id
-    );
-    buttonsContainer.appendChild(button);
+    const entry = createFilterTagEntry(tag);
+    buttonsContainer.appendChild(entry);
   });
 
   filterTagListEl.appendChild(buttonsContainer);
@@ -268,6 +288,208 @@ function createFilterButton(label, tagId, isActive) {
     }
   });
   return button;
+}
+
+function createFilterTagEntry(tag) {
+  const entry = document.createElement('div');
+  entry.className = 'filter-tag-entry';
+
+  const button = createFilterButton(
+    `${tag.label} (${tag.count})`,
+    tag.id,
+    currentState.activeTag === tag.id
+  );
+  entry.appendChild(button);
+
+  const excludeButton = document.createElement('button');
+  excludeButton.type = 'button';
+  excludeButton.className = 'filter-tag-exclude-button';
+  excludeButton.setAttribute('aria-label', `排除标签 ${tag.label}`);
+  excludeButton.title = '从标签列表中排除此标签';
+  excludeButton.textContent = '×';
+  excludeButton.addEventListener('click', (event) =>
+    handleExcludeTag(event, tag)
+  );
+  entry.appendChild(excludeButton);
+
+  return entry;
+}
+
+function handleExcludeTag(event, tag) {
+  event.preventDefault();
+  event.stopPropagation();
+
+  if (!tag?.id) {
+    return;
+  }
+
+  const next = new Set(Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : []);
+  const previousSize = next.size;
+  next.add(tag.id);
+
+  if (next.size === previousSize) {
+    if (currentState.activeTag === tag.id) {
+      updateState({ activeTag: null });
+    }
+    return;
+  }
+
+  const patch = { excludedTags: Array.from(next) };
+  if (currentState.activeTag === tag.id) {
+    patch.activeTag = null;
+  }
+  updateState(patch);
+}
+
+function handleRestoreExcludedTag(tagId) {
+  if (!tagId) {
+    return;
+  }
+
+  const current = Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : [];
+  if (!current.includes(tagId)) {
+    return;
+  }
+
+  const next = current.filter((item) => item !== tagId);
+  updateState({ excludedTags: next });
+}
+
+function handleExcludedTagFormSubmit(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  if (!(form instanceof HTMLFormElement)) {
+    return;
+  }
+
+  const input = form.querySelector('.excluded-tag-input');
+  if (!(input instanceof HTMLInputElement)) {
+    return;
+  }
+
+  const tokens = extractKeywords(input.value || '');
+  if (!tokens.length) {
+    input.value = '';
+    input.focus?.();
+    return;
+  }
+
+  const next = new Set(Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : []);
+  let added = false;
+  for (const token of tokens) {
+    const previousSize = next.size;
+    next.add(token);
+    if (next.size !== previousSize) {
+      added = true;
+    }
+  }
+
+  if (added) {
+    const patch = { excludedTags: Array.from(next) };
+    if (currentState.activeTag && next.has(currentState.activeTag)) {
+      patch.activeTag = null;
+    }
+    updateState(patch);
+  }
+
+  input.value = '';
+  input.focus?.();
+}
+
+function createExcludedTagSettings() {
+  const container = document.createElement('div');
+  container.className = 'excluded-tag-settings';
+
+  const header = document.createElement('div');
+  header.className = 'excluded-tag-header';
+
+  const title = document.createElement('h4');
+  title.className = 'excluded-tag-title';
+  title.textContent = '标签排除';
+  header.appendChild(title);
+
+  container.appendChild(header);
+
+  const help = document.createElement('p');
+  help.className = 'excluded-tag-help';
+  help.textContent = '被排除的标签不会在筛选列表中显示，子文件夹也不会按照这些标签分组。';
+  container.appendChild(help);
+
+  const form = document.createElement('form');
+  form.className = 'excluded-tag-form';
+  form.addEventListener('submit', handleExcludedTagFormSubmit);
+
+  const input = document.createElement('input');
+  input.type = 'text';
+  input.className = 'excluded-tag-input';
+  input.placeholder = '输入要排除的标签';
+  input.setAttribute('aria-label', '输入要排除的标签');
+  form.appendChild(input);
+
+  const addButton = document.createElement('button');
+  addButton.type = 'submit';
+  addButton.className = 'excluded-tag-add-button';
+  addButton.textContent = '添加';
+  form.appendChild(addButton);
+
+  container.appendChild(form);
+
+  const excluded = Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : [];
+
+  if (!excluded.length) {
+    const empty = document.createElement('span');
+    empty.className = 'excluded-tag-empty';
+    empty.textContent = '尚未排除任何标签。';
+    container.appendChild(empty);
+    return container;
+  }
+
+  const list = document.createElement('ul');
+  list.className = 'excluded-tag-list';
+
+  const items = excluded
+    .map((id) => ({ id, label: humanizeKeyword(id) }))
+    .sort((a, b) => {
+      const starCompare = compareStarPriority(a, b);
+      if (starCompare !== 0) {
+        return starCompare;
+      }
+      return compareTagsAlphabetically(a, b);
+    });
+
+  items.forEach((item) => {
+    const listItem = document.createElement('li');
+    listItem.className = 'excluded-tag-item';
+
+    const label = document.createElement('span');
+    label.className = 'excluded-tag-label';
+    label.textContent = item.label;
+    listItem.appendChild(label);
+
+    const restoreButton = document.createElement('button');
+    restoreButton.type = 'button';
+    restoreButton.className = 'excluded-tag-restore-button';
+    restoreButton.textContent = '恢复';
+    restoreButton.addEventListener('click', () =>
+      handleRestoreExcludedTag(item.id)
+    );
+    listItem.appendChild(restoreButton);
+
+    list.appendChild(listItem);
+  });
+
+  container.appendChild(list);
+
+  return container;
 }
 
 function renderDirectoryList() {
@@ -520,9 +742,10 @@ function getLeafName(leaf) {
   return segments.length ? segments[segments.length - 1] : leaf.displayPath;
 }
 
-function buildDerivedTags(leaves) {
+function buildDerivedTags(leaves, excludedTags) {
   const keywordIndex = {};
   const buckets = new Map();
+  const excluded = new Set(Array.isArray(excludedTags) ? excludedTags : []);
 
   const safeLeaves = Array.isArray(leaves) ? leaves : [];
 
@@ -532,6 +755,9 @@ function buildDerivedTags(leaves) {
     keywordIndex[leaf.path] = keywords;
 
     for (const keyword of keywords) {
+      if (excluded.has(keyword)) {
+        continue;
+      }
       const bucket = buckets.get(keyword) ?? {
         id: keyword,
         label: humanizeKeyword(keyword),
@@ -589,6 +815,70 @@ function compareTagsAlphabetically(a, b) {
   }
 
   return alphabeticalCollator.compare(a.label, b.label);
+}
+
+function normalizeExcludedTags(list) {
+  if (!Array.isArray(list)) {
+    return [];
+  }
+
+  const normalized = new Set();
+
+  for (const item of list) {
+    if (typeof item !== 'string') {
+      continue;
+    }
+    const trimmed = item.trim();
+    if (!trimmed) {
+      continue;
+    }
+    if (isStarKeyword(trimmed)) {
+      normalized.add(trimmed);
+    } else {
+      normalized.add(trimmed.toLowerCase());
+    }
+  }
+
+  return Array.from(normalized);
+}
+
+function loadExcludedTags() {
+  if (typeof window === 'undefined') {
+    return [];
+  }
+
+  try {
+    const storage = window.localStorage;
+    if (!storage) {
+      return [];
+    }
+    const raw = storage.getItem(EXCLUDED_TAGS_STORAGE_KEY);
+    if (!raw) {
+      return [];
+    }
+    const parsed = JSON.parse(raw);
+    return normalizeExcludedTags(parsed);
+  } catch (error) {
+    console.warn('Failed to load excluded tags', error);
+    return [];
+  }
+}
+
+function saveExcludedTags(tags) {
+  if (typeof window === 'undefined') {
+    return;
+  }
+
+  try {
+    const storage = window.localStorage;
+    if (!storage) {
+      return;
+    }
+    const normalized = normalizeExcludedTags(tags);
+    storage.setItem(EXCLUDED_TAGS_STORAGE_KEY, JSON.stringify(normalized));
+  } catch (error) {
+    console.warn('Failed to save excluded tags', error);
+  }
 }
 
 function getAlphabeticalGroup(label) {
