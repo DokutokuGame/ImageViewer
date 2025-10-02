@@ -270,6 +270,53 @@ body {
   min-height: 0;
   overflow-y: auto;
   padding-right: 0.25rem;
+  position: relative;
+}
+
+.media-progress {
+  position: sticky;
+  top: 0.75rem;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.5rem 0.75rem;
+  margin: 0 auto 0.75rem;
+  background: var(--panel-bg);
+  border: 1px solid var(--border-color);
+  border-radius: 999px;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.15);
+  backdrop-filter: blur(8px);
+  color: var(--text-color);
+  max-width: calc(100% - 1.5rem);
+}
+
+.media-progress[hidden] {
+  display: none !important;
+}
+
+.media-progress-bar {
+  position: relative;
+  width: 140px;
+  height: 6px;
+  border-radius: 999px;
+  background: rgba(15, 23, 42, 0.15);
+  overflow: hidden;
+  flex-shrink: 0;
+}
+
+.media-progress-bar-fill {
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent-color);
+  transition: width 0.2s ease;
+}
+
+.media-progress-label {
+  font-size: 0.78rem;
+  color: var(--text-color);
+  white-space: nowrap;
 }
 
 @media (max-width: 960px) {

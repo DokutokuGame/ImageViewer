@@ -8,10 +8,14 @@ const selectRootButton = document.getElementById('select-root');
 const openDirectoryButton = document.getElementById('open-directory');
 const tagListEl = document.getElementById('tag-list');
 const filterTagListEl = document.getElementById('filter-tag-list');
+const mediaProgressEl = document.getElementById('media-progress');
+const mediaProgressBarEl = document.getElementById('media-progress-bar');
+const mediaProgressLabelEl = document.getElementById('media-progress-label');
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
 const MEDIA_RENDER_BATCH_SIZE = 12;
+const MEDIA_PROGRESS_MIN_ITEMS = MEDIA_RENDER_BATCH_SIZE * 2;
 
 let currentState = {
   root: null,
@@ -26,6 +30,8 @@ let currentState = {
 let mediaRenderAbortController = null;
 const imageLoader = createImageLoader();
 const lazyThumbnailLoader = createLazyThumbnailLoader();
+let mediaProgressHideTimer = null;
+let mediaProgressTotalCount = 0;
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
@@ -388,6 +394,7 @@ function renderMedia() {
   delete mediaGridEl.dataset.loading;
   lazyThumbnailLoader.reset?.();
   mediaGridEl.innerHTML = '';
+  resetMediaProgress();
 
   updateOpenDirectoryButton(null);
 
@@ -538,22 +545,34 @@ function startMediaRender(files) {
   mediaRenderAbortController = controller;
   mediaGridEl.dataset.loading = 'true';
 
-  renderMediaIncrementally(files, controller.signal)
+  const total = Array.isArray(files) ? files.length : 0;
+  beginMediaProgress(total);
+
+  let renderFailed = false;
+
+  renderMediaIncrementally(files, controller.signal, total)
     .catch((error) => {
       if (error?.name !== 'AbortError') {
+        renderFailed = true;
         console.error('Failed to render media items', error);
+        failMediaProgress();
       }
     })
     .finally(() => {
       if (mediaRenderAbortController === controller) {
         delete mediaGridEl.dataset.loading;
         mediaRenderAbortController = null;
+        if (!renderFailed) {
+          finishMediaProgress();
+        }
       }
     });
 }
 
-async function renderMediaIncrementally(files, signal) {
+async function renderMediaIncrementally(files, signal, totalCount) {
   const queue = Array.isArray(files) ? files.slice() : [];
+  const total = typeof totalCount === 'number' ? totalCount : queue.length;
+  let renderedCount = 0;
 
   while (queue.length && !signal.aborted) {
     const fragment = document.createDocumentFragment();
@@ -563,6 +582,11 @@ async function renderMediaIncrementally(files, signal) {
       const file = queue.shift();
       fragment.appendChild(createMediaCard(file, signal));
       count += 1;
+      renderedCount += 1;
+      if (total > 0) {
+        renderedCount = Math.min(renderedCount, total);
+      }
+      updateMediaProgress(renderedCount);
     }
 
     mediaGridEl.appendChild(fragment);
@@ -585,6 +609,115 @@ function waitForNextFrame() {
     }
     setTimeout(resolve, 16);
   });
+}
+
+function beginMediaProgress(total) {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  if (!total || total < MEDIA_PROGRESS_MIN_ITEMS) {
+    resetMediaProgress();
+    return;
+  }
+
+  mediaProgressTotalCount = total;
+  mediaProgressEl.hidden = false;
+  mediaProgressEl.dataset.state = 'loading';
+  updateMediaProgress(0);
+}
+
+function updateMediaProgress(loaded) {
+  if (!mediaProgressEl || mediaProgressTotalCount <= 0) {
+    return;
+  }
+
+  const total = mediaProgressTotalCount;
+  const clampedLoaded = Math.max(0, Math.min(loaded, total));
+  const percent = total > 0 ? (clampedLoaded / total) * 100 : 0;
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = `${percent}%`;
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = `加载中 ${clampedLoaded} / ${total}`;
+  }
+}
+
+function finishMediaProgress() {
+  if (!mediaProgressEl || mediaProgressTotalCount <= 0) {
+    resetMediaProgress();
+    return;
+  }
+
+  updateMediaProgress(mediaProgressTotalCount);
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = '加载完成';
+  }
+
+  mediaProgressEl.dataset.state = 'complete';
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+  }
+
+  mediaProgressHideTimer = window.setTimeout(() => {
+    resetMediaProgress();
+  }, 800);
+}
+
+function failMediaProgress() {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressTotalCount > 0) {
+    updateMediaProgress(mediaProgressTotalCount);
+    if (mediaProgressLabelEl) {
+      mediaProgressLabelEl.textContent = '加载失败';
+    }
+    mediaProgressEl.dataset.state = 'error';
+    if (mediaProgressHideTimer) {
+      window.clearTimeout(mediaProgressHideTimer);
+    }
+    mediaProgressHideTimer = window.setTimeout(() => {
+      resetMediaProgress();
+    }, 1200);
+    return;
+  }
+
+  resetMediaProgress();
+}
+
+function resetMediaProgress() {
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  mediaProgressTotalCount = 0;
+
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  mediaProgressEl.hidden = true;
+  mediaProgressEl.removeAttribute('data-state');
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = '0%';
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = '';
+  }
 }
 
 function createMediaCard(file, signal) {
