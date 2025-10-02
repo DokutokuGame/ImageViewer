@@ -202,6 +202,12 @@ body {
   min-width: 0;
 }
 
+.filter-tag-search-form {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
 .filter-tag-search-input {
   width: 100%;
   padding: 0.4rem 0.6rem;
@@ -216,6 +222,26 @@ body {
   outline: none;
   border-color: var(--accent-color);
   box-shadow: 0 0 0 2px rgba(9, 105, 218, 0.2);
+}
+
+.filter-tag-search-submit {
+  border: none;
+  background: var(--accent-color);
+  color: var(--accent-color-contrast);
+  padding: 0.4rem 0.75rem;
+  border-radius: 6px;
+  font-size: 0.78rem;
+  cursor: pointer;
+  transition: filter 0.2s ease, background-color 0.2s ease;
+}
+
+.filter-tag-search-submit:hover {
+  filter: brightness(1.05);
+}
+
+.filter-tag-search-submit:focus-visible {
+  outline: 2px solid rgba(9, 105, 218, 0.35);
+  outline-offset: 2px;
 }
 
 .filter-tag-sort {
@@ -313,6 +339,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 0.5rem;
+  cursor: pointer;
 }
 
 .excluded-tag-title {
@@ -320,6 +348,42 @@ body {
   font-size: 0.8rem;
   font-weight: 600;
   color: #57606a;
+}
+
+.excluded-tag-count {
+  font-size: 0.75rem;
+  color: #6e7781;
+}
+
+.excluded-tag-toggle-button {
+  border: none;
+  background: transparent;
+  color: var(--accent-color);
+  font-size: 0.75rem;
+  font-weight: 600;
+  padding: 0.25rem 0.75rem;
+  border-radius: 999px;
+  cursor: pointer;
+  transition: background-color 0.2s ease, color 0.2s ease;
+}
+
+.excluded-tag-toggle-button:hover {
+  background: rgba(9, 105, 218, 0.12);
+}
+
+.excluded-tag-toggle-button:focus-visible {
+  outline: 2px solid rgba(9, 105, 218, 0.35);
+  outline-offset: 2px;
+}
+
+.excluded-tag-body {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.excluded-tag-body[hidden] {
+  display: none;
 }
 
 .excluded-tag-help {

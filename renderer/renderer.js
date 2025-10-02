@@ -39,6 +39,7 @@ let currentState = {
   tagSortMode: TAG_SORT_MODES.ALPHABETICAL,
   tagSearchQuery: '',
   excludedTags: loadExcludedTags(),
+  excludedTagPanelExpanded: false,
 };
 
 let mediaRenderAbortController = null;
@@ -46,6 +47,7 @@ const imageLoader = createImageLoader();
 const lazyThumbnailLoader = createLazyThumbnailLoader();
 let mediaProgressHideTimer = null;
 let mediaProgressTotalCount = 0;
+let tagSearchDraft = currentState.tagSearchQuery || '';
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
@@ -141,6 +143,16 @@ function updateState(patch) {
 
   if ('tagSearchQuery' in patch && typeof nextState.tagSearchQuery !== 'string') {
     nextState.tagSearchQuery = '';
+  }
+
+  if ('excludedTagPanelExpanded' in patch) {
+    nextState.excludedTagPanelExpanded = Boolean(
+      nextState.excludedTagPanelExpanded
+    );
+  }
+
+  if ('tagSearchQuery' in patch) {
+    tagSearchDraft = nextState.tagSearchQuery || '';
   }
 
   currentState = nextState;
@@ -415,12 +427,57 @@ function createExcludedTagSettings() {
   title.textContent = '标签排除';
   header.appendChild(title);
 
+  const excluded = Array.isArray(currentState.excludedTags)
+    ? currentState.excludedTags
+    : [];
+
+  const count = document.createElement('span');
+  count.className = 'excluded-tag-count';
+  count.textContent = `(${excluded.length})`;
+  header.appendChild(count);
+
+  const toggleButton = document.createElement('button');
+  toggleButton.type = 'button';
+  toggleButton.className = 'excluded-tag-toggle-button';
+  toggleButton.setAttribute(
+    'aria-expanded',
+    String(Boolean(currentState.excludedTagPanelExpanded))
+  );
+  toggleButton.textContent = currentState.excludedTagPanelExpanded
+    ? '收起'
+    : '展开';
+  toggleButton.setAttribute(
+    'aria-label',
+    currentState.excludedTagPanelExpanded ? '收起标签排除设置' : '展开标签排除设置'
+  );
+  toggleButton.addEventListener('click', (event) => {
+    event.preventDefault();
+    event.stopPropagation();
+    const nextOpen = !currentState.excludedTagPanelExpanded;
+    updateState({ excludedTagPanelExpanded: nextOpen });
+  });
+  header.appendChild(toggleButton);
+
+  header.addEventListener('click', (event) => {
+    if (event.target instanceof HTMLButtonElement) {
+      return;
+    }
+    const nextOpen = !currentState.excludedTagPanelExpanded;
+    updateState({ excludedTagPanelExpanded: nextOpen });
+  });
+
   container.appendChild(header);
+
+  const body = document.createElement('div');
+  body.className = 'excluded-tag-body';
+  if (!currentState.excludedTagPanelExpanded) {
+    body.hidden = true;
+  }
 
   const help = document.createElement('p');
   help.className = 'excluded-tag-help';
   help.textContent = '被排除的标签不会在筛选列表中显示，子文件夹也不会按照这些标签分组。';
-  container.appendChild(help);
+  body.appendChild(help);
 
   const form = document.createElement('form');
   form.className = 'excluded-tag-form';
@@ -439,17 +496,14 @@ function createExcludedTagSettings() {
   addButton.textContent = '添加';
   form.appendChild(addButton);
 
-  container.appendChild(form);
-
-  const excluded = Array.isArray(currentState.excludedTags)
-    ? currentState.excludedTags
-    : [];
+  body.appendChild(form);
 
   if (!excluded.length) {
     const empty = document.createElement('span');
     empty.className = 'excluded-tag-empty';
     empty.textContent = '尚未排除任何标签。';
-    container.appendChild(empty);
+    body.appendChild(empty);
+    container.appendChild(body);
     return container;
   }
 
@@ -487,7 +541,9 @@ function createExcludedTagSettings() {
     list.appendChild(listItem);
   });
 
-  container.appendChild(list);
+  body.appendChild(list);
+
+  container.appendChild(body);
 
   return container;
 }
@@ -914,6 +970,63 @@ function normalizeTagSortMode(mode) {
     : TAG_SORT_MODES.ALPHABETICAL;
 }
 
+function handleTagSearchInput(event) {
+  const target = event?.currentTarget;
+  if (!(target instanceof HTMLInputElement)) {
+    return;
+  }
+  tagSearchDraft = target.value ?? '';
+}
+
+function handleTagSearchFormSubmit(event) {
+  event.preventDefault();
+
+  const form = event.currentTarget;
+  if (form instanceof HTMLFormElement) {
+    const input = form.querySelector('.filter-tag-search-input');
+    if (input instanceof HTMLInputElement) {
+      tagSearchDraft = input.value ?? '';
+    }
+  }
+
+  if (tagSearchDraft === currentState.tagSearchQuery) {
+    return;
+  }
+
+  updateState({ tagSearchQuery: tagSearchDraft });
+
+  const restoreFocus = () => {
+    const nextInput = document.getElementById('tag-search-input');
+    if (nextInput instanceof HTMLInputElement) {
+      if (typeof nextInput.focus === 'function') {
+        try {
+          nextInput.focus({ preventScroll: true });
+        } catch (error) {
+          try {
+            nextInput.focus();
+          } catch (focusError) {
+            // Ignore focus errors in unsupported environments.
+          }
+        }
+      }
+      try {
+        const position = typeof tagSearchDraft === 'string'
+          ? tagSearchDraft.length
+          : nextInput.value.length;
+        nextInput.setSelectionRange(position, position);
+      } catch (error) {
+        // Ignore selection errors in unsupported environments.
+      }
+    }
+  };
+
+  if (typeof window.requestAnimationFrame === 'function') {
+    window.requestAnimationFrame(restoreFocus);
+  } else {
+    window.setTimeout(restoreFocus, 0);
+  }
+}
+
 function createTagFilterControls() {
   const container = document.createElement('div');
   container.className = 'filter-tag-controls';
@@ -921,53 +1034,34 @@ function createTagFilterControls() {
   const searchWrapper = document.createElement('div');
   searchWrapper.className = 'filter-tag-search';
 
+  const searchForm = document.createElement('form');
+  searchForm.className = 'filter-tag-search-form';
+  searchForm.addEventListener('submit', handleTagSearchFormSubmit);
+
   const searchInput = document.createElement('input');
   searchInput.type = 'search';
   searchInput.id = 'tag-search-input';
   searchInput.className = 'filter-tag-search-input';
   searchInput.placeholder = '搜索标签';
   searchInput.setAttribute('aria-label', '搜索标签');
-  searchInput.value = currentState.tagSearchQuery;
-  searchInput.addEventListener('input', (event) => {
-    const target = event.currentTarget;
-    if (!(target instanceof HTMLInputElement)) {
-      return;
-    }
-    const { value, selectionStart, selectionEnd } = target;
-    if (value === currentState.tagSearchQuery) {
-      return;
-    }
-    updateState({ tagSearchQuery: value });
-    const restoreSelection = () => {
-      const nextInput = document.getElementById('tag-search-input');
-      if (nextInput instanceof HTMLInputElement) {
-        if (typeof nextInput.focus === 'function') {
-          try {
-            nextInput.focus({ preventScroll: true });
-          } catch (error) {
-            try {
-              nextInput.focus();
-            } catch (focusError) {
-              // Ignore focus errors in unsupported environments.
-            }
-          }
-        }
-        try {
-          nextInput.selectionStart = selectionStart ?? value.length;
-          nextInput.selectionEnd = selectionEnd ?? value.length;
-        } catch (error) {
-          // Ignore selection errors in unsupported environments.
-        }
-      }
-    };
-    if (typeof window.requestAnimationFrame === 'function') {
-      window.requestAnimationFrame(restoreSelection);
-    } else {
-      window.setTimeout(restoreSelection, 0);
-    }
-  });
+  const searchValue =
+    typeof tagSearchDraft === 'string'
+      ? tagSearchDraft
+      : currentState.tagSearchQuery || '';
+  searchInput.value = searchValue;
+  if (searchValue !== tagSearchDraft) {
+    tagSearchDraft = searchValue;
+  }
+  searchInput.addEventListener('input', handleTagSearchInput);
 
-  searchWrapper.appendChild(searchInput);
+  const confirmButton = document.createElement('button');
+  confirmButton.type = 'submit';
+  confirmButton.className = 'filter-tag-search-submit';
+  confirmButton.textContent = '确认';
+
+  searchForm.appendChild(searchInput);
+  searchForm.appendChild(confirmButton);
+  searchWrapper.appendChild(searchForm);
   container.appendChild(searchWrapper);
 
   const sortWrapper = document.createElement('div');
