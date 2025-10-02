@@ -354,6 +354,10 @@ body {
   flex-shrink: 0;
 }
 
+.media-progress[data-state='pending'] .media-progress-bar {
+  display: none;
+}
+
 .media-progress-bar-fill {
   width: 0%;
   height: 100%;

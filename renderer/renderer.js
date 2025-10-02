@@ -19,6 +19,7 @@ const TAG_SORT_MODES = {
   FREQUENCY: 'frequency',
 };
 const NUMBERED_KEYWORD_PATTERN = /^(?:vol|part|no)[0-9]*$/u;
+const STAR_KEYWORD_PATTERN = /^⭐+$/u;
 const alphabeticalCollator = new Intl.Collator(['en', 'zh-Hans'], {
   sensitivity: 'base',
   numeric: true,
@@ -391,6 +392,8 @@ async function handleSavedTagSelection(tag) {
   if (!mediaApi?.scanDirectory) {
     return;
   }
+  showMediaPendingProgress('正在加载已保存的目录…');
+
   try {
     const leaves = await mediaApi.scanDirectory(tag.path);
     updateState({
@@ -401,6 +404,7 @@ async function handleSavedTagSelection(tag) {
     });
   } catch (error) {
     console.error('Failed to load directory from tag', error);
+    resetMediaProgress();
   }
 }
 
@@ -477,13 +481,13 @@ function extractKeywords(name) {
     .map((token) => token.trim())
     .filter(Boolean)
     .map((token) => {
-      if (/^⭐+$/u.test(token)) {
+      if (isStarKeyword(token)) {
         return token;
       }
       return token.toLowerCase();
     })
     .filter((token) => {
-      if (/^⭐+$/u.test(token)) {
+      if (isStarKeyword(token)) {
         return true;
       }
       if (/^\d+$/u.test(token)) {
@@ -499,7 +503,7 @@ function extractKeywords(name) {
 }
 
 function humanizeKeyword(keyword) {
-  if (/^⭐+$/u.test(keyword)) {
+  if (isStarKeyword(keyword)) {
     return keyword;
   }
   if (/^[\p{Script=Han}]+$/u.test(keyword)) {
@@ -561,6 +565,11 @@ function getRenderableTags() {
 }
 
 function compareTags(a, b, mode) {
+  const starComparison = compareStarPriority(a, b);
+  if (starComparison !== 0) {
+    return starComparison;
+  }
+
   if (mode === TAG_SORT_MODES.FREQUENCY) {
     if (b.count !== a.count) {
       return b.count - a.count;
@@ -583,6 +592,10 @@ function compareTagsAlphabetically(a, b) {
 }
 
 function getAlphabeticalGroup(label) {
+  if (isStarLabel(label)) {
+    return -1;
+  }
+
   if (!label) {
     return 1;
   }
@@ -821,6 +834,29 @@ function beginMediaProgress(total) {
   updateMediaProgress(0);
 }
 
+function showMediaPendingProgress(message) {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (mediaProgressHideTimer) {
+    window.clearTimeout(mediaProgressHideTimer);
+    mediaProgressHideTimer = null;
+  }
+
+  mediaProgressTotalCount = 0;
+  mediaProgressEl.hidden = false;
+  mediaProgressEl.dataset.state = 'pending';
+
+  if (mediaProgressBarEl) {
+    mediaProgressBarEl.style.width = '0%';
+  }
+
+  if (mediaProgressLabelEl) {
+    mediaProgressLabelEl.textContent = message || '正在加载…';
+  }
+}
+
 function updateMediaProgress(loaded) {
   if (!mediaProgressEl || mediaProgressTotalCount <= 0) {
     return;
@@ -907,6 +943,41 @@ function resetMediaProgress() {
   if (mediaProgressLabelEl) {
     mediaProgressLabelEl.textContent = '';
   }
+}
+
+function isStarKeyword(keyword) {
+  return typeof keyword === 'string' && STAR_KEYWORD_PATTERN.test(keyword);
+}
+
+function isStarLabel(label) {
+  return typeof label === 'string' && STAR_KEYWORD_PATTERN.test(label.trim());
+}
+
+function isStarTag(tag) {
+  if (!tag) {
+    return false;
+  }
+
+  if (isStarKeyword(tag.id)) {
+    return true;
+  }
+
+  if (isStarLabel(tag.label)) {
+    return true;
+  }
+
+  return false;
+}
+
+function compareStarPriority(a, b) {
+  const aStar = isStarTag(a);
+  const bStar = isStarTag(b);
+
+  if (aStar === bStar) {
+    return 0;
+  }
+
+  return aStar ? -1 : 1;
 }
 
 function createMediaCard(file, signal) {
