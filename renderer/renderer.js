@@ -493,6 +493,7 @@ function createExcludedTagSettings() {
 }
 
 function renderDirectoryList() {
+  const previousScrollTop = directoryListEl.scrollTop;
   directoryListEl.innerHTML = '';
   const visibleLeaves = getVisibleLeaves();
 
@@ -510,6 +511,7 @@ function renderDirectoryList() {
         : '请选择一个目录开始。';
     }
     directoryListEl.appendChild(emptyMessage);
+    directoryListEl.scrollTop = 0;
     return;
   }
 
@@ -543,6 +545,15 @@ function renderDirectoryList() {
 
     directoryListEl.appendChild(item);
   });
+
+  const maxScrollTop = Math.max(
+    0,
+    directoryListEl.scrollHeight - directoryListEl.clientHeight
+  );
+  directoryListEl.scrollTop = Math.max(
+    0,
+    Math.min(previousScrollTop, maxScrollTop)
+  );
 }
 
 function updateOpenDirectoryButton(leaf) {
