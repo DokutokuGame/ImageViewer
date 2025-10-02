@@ -14,6 +14,15 @@ const mediaProgressLabelEl = document.getElementById('media-progress-label');
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
+const TAG_SORT_MODES = {
+  ALPHABETICAL: 'alphabetical',
+  FREQUENCY: 'frequency',
+};
+const NUMBERED_KEYWORD_PATTERN = /^(?:vol|part|no)[0-9]*$/u;
+const alphabeticalCollator = new Intl.Collator(['en', 'zh-Hans'], {
+  sensitivity: 'base',
+  numeric: true,
+});
 const MEDIA_RENDER_BATCH_SIZE = 12;
 const MEDIA_PROGRESS_MIN_ITEMS = MEDIA_RENDER_BATCH_SIZE * 2;
 
@@ -25,6 +34,8 @@ let currentState = {
   derivedTags: [],
   activeTag: null,
   keywordIndex: {},
+  tagSortMode: TAG_SORT_MODES.ALPHABETICAL,
+  tagSearchQuery: '',
 };
 
 let mediaRenderAbortController = null;
@@ -105,6 +116,14 @@ function updateState(patch) {
 
   if ('savedTags' in patch && !Array.isArray(nextState.savedTags)) {
     nextState.savedTags = [];
+  }
+
+  if ('tagSortMode' in patch) {
+    nextState.tagSortMode = normalizeTagSortMode(nextState.tagSortMode);
+  }
+
+  if ('tagSearchQuery' in patch && typeof nextState.tagSearchQuery !== 'string') {
+    nextState.tagSearchQuery = '';
   }
 
   currentState = nextState;
@@ -191,22 +210,41 @@ function renderTagFilters() {
   if (!currentState.derivedTags.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
-    empty.textContent = '未发现重复关键词，暂无法生成标签。';
+    empty.textContent = '未发现重复关键词，暂无生成标签。';
     filterTagListEl.appendChild(empty);
     return;
   }
 
-  const allButton = createFilterButton('全部', null, currentState.activeTag == null);
-  filterTagListEl.appendChild(allButton);
+  const controls = createTagFilterControls();
+  if (controls) {
+    filterTagListEl.appendChild(controls);
+  }
 
-  currentState.derivedTags.forEach((tag) => {
+  const buttonsContainer = document.createElement('div');
+  buttonsContainer.className = 'filter-tag-button-group';
+
+  const allButton = createFilterButton('全部', null, currentState.activeTag == null);
+  buttonsContainer.appendChild(allButton);
+
+  const filteredTags = getRenderableTags();
+
+  filteredTags.forEach((tag) => {
     const button = createFilterButton(
       `${tag.label} (${tag.count})`,
       tag.id,
       currentState.activeTag === tag.id
     );
-    filterTagListEl.appendChild(button);
+    buttonsContainer.appendChild(button);
   });
+
+  filterTagListEl.appendChild(buttonsContainer);
+
+  if (!filteredTags.length) {
+    const empty = document.createElement('span');
+    empty.className = 'filter-tag-empty';
+    empty.textContent = '没有找到匹配的标签。';
+    filterTagListEl.appendChild(empty);
+  }
 }
 
 function createFilterButton(label, tagId, isActive) {
@@ -448,6 +486,12 @@ function extractKeywords(name) {
       if (/^⭐+$/u.test(token)) {
         return true;
       }
+      if (/^\d+$/u.test(token)) {
+        return false;
+      }
+      if (NUMBERED_KEYWORD_PATTERN.test(token)) {
+        return false;
+      }
       return token.length > 1;
     });
 
@@ -494,16 +538,161 @@ function buildDerivedTags(leaves) {
     }
   }
 
-  const tags = Array.from(buckets.values())
-    .filter((bucket) => bucket.count >= MIN_TAG_OCCURRENCE)
-    .sort((a, b) => {
-      if (b.count !== a.count) {
-        return b.count - a.count;
-      }
-      return a.label.localeCompare(b.label, 'zh-Hans');
-    });
+  const tags = Array.from(buckets.values()).filter(
+    (bucket) => bucket.count >= MIN_TAG_OCCURRENCE
+  );
 
   return { tags, keywordIndex };
+}
+
+function getRenderableTags() {
+  const sortMode = normalizeTagSortMode(currentState.tagSortMode);
+  const query = currentState.tagSearchQuery.trim().toLowerCase();
+
+  const filtered = currentState.derivedTags.filter((tag) => {
+    if (!query) {
+      return true;
+    }
+    const label = `${tag.label || ''}`.toLowerCase();
+    return label.includes(query) || tag.id.includes(query);
+  });
+
+  return filtered.sort((a, b) => compareTags(a, b, sortMode));
+}
+
+function compareTags(a, b, mode) {
+  if (mode === TAG_SORT_MODES.FREQUENCY) {
+    if (b.count !== a.count) {
+      return b.count - a.count;
+    }
+    return compareTagsAlphabetically(a, b);
+  }
+
+  return compareTagsAlphabetically(a, b);
+}
+
+function compareTagsAlphabetically(a, b) {
+  const groupA = getAlphabeticalGroup(a.label);
+  const groupB = getAlphabeticalGroup(b.label);
+
+  if (groupA !== groupB) {
+    return groupA - groupB;
+  }
+
+  return alphabeticalCollator.compare(a.label, b.label);
+}
+
+function getAlphabeticalGroup(label) {
+  if (!label) {
+    return 1;
+  }
+
+  const firstChar = label.trim().charAt(0);
+  if (/^[A-Za-z]$/.test(firstChar)) {
+    return 0;
+  }
+  return 1;
+}
+
+function normalizeTagSortMode(mode) {
+  return mode === TAG_SORT_MODES.FREQUENCY
+    ? TAG_SORT_MODES.FREQUENCY
+    : TAG_SORT_MODES.ALPHABETICAL;
+}
+
+function createTagFilterControls() {
+  const container = document.createElement('div');
+  container.className = 'filter-tag-controls';
+
+  const searchWrapper = document.createElement('div');
+  searchWrapper.className = 'filter-tag-search';
+
+  const searchInput = document.createElement('input');
+  searchInput.type = 'search';
+  searchInput.id = 'tag-search-input';
+  searchInput.className = 'filter-tag-search-input';
+  searchInput.placeholder = '搜索标签';
+  searchInput.setAttribute('aria-label', '搜索标签');
+  searchInput.value = currentState.tagSearchQuery;
+  searchInput.addEventListener('input', (event) => {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLInputElement)) {
+      return;
+    }
+    const { value, selectionStart, selectionEnd } = target;
+    if (value === currentState.tagSearchQuery) {
+      return;
+    }
+    updateState({ tagSearchQuery: value });
+    const restoreSelection = () => {
+      const nextInput = document.getElementById('tag-search-input');
+      if (nextInput instanceof HTMLInputElement) {
+        if (typeof nextInput.focus === 'function') {
+          try {
+            nextInput.focus({ preventScroll: true });
+          } catch (error) {
+            try {
+              nextInput.focus();
+            } catch (focusError) {
+              // Ignore focus errors in unsupported environments.
+            }
+          }
+        }
+        try {
+          nextInput.selectionStart = selectionStart ?? value.length;
+          nextInput.selectionEnd = selectionEnd ?? value.length;
+        } catch (error) {
+          // Ignore selection errors in unsupported environments.
+        }
+      }
+    };
+    if (typeof window.requestAnimationFrame === 'function') {
+      window.requestAnimationFrame(restoreSelection);
+    } else {
+      window.setTimeout(restoreSelection, 0);
+    }
+  });
+
+  searchWrapper.appendChild(searchInput);
+  container.appendChild(searchWrapper);
+
+  const sortWrapper = document.createElement('div');
+  sortWrapper.className = 'filter-tag-sort';
+
+  const sortSelect = document.createElement('select');
+  sortSelect.id = 'tag-sort-select';
+  sortSelect.className = 'filter-tag-sort-select';
+  sortSelect.setAttribute('aria-label', '标签排序');
+
+  const options = [
+    { value: TAG_SORT_MODES.ALPHABETICAL, label: '按首字母' },
+    { value: TAG_SORT_MODES.FREQUENCY, label: '按数量' },
+  ];
+
+  options.forEach((option) => {
+    const node = document.createElement('option');
+    node.value = option.value;
+    node.textContent = option.label;
+    sortSelect.appendChild(node);
+  });
+
+  sortSelect.value = normalizeTagSortMode(currentState.tagSortMode);
+  sortSelect.addEventListener('change', (event) => {
+    const target = event.currentTarget;
+    if (!(target instanceof HTMLSelectElement)) {
+      return;
+    }
+    const value = normalizeTagSortMode(target.value);
+    if (value === currentState.tagSortMode) {
+      return;
+    }
+    updateState({ tagSortMode: value });
+  });
+
+  sortWrapper.appendChild(sortSelect);
+  container.appendChild(sortWrapper);
+
+  return container;
 }
 
 function getVisibleLeaves() {
