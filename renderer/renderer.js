@@ -811,10 +811,22 @@ function renderMedia() {
 
   updateOpenDirectoryButton(leaf);
 
-  mediaHeadingEl.textContent = leaf.displayPath;
-  mediaCountEl.textContent = `${leaf.mediaFiles.length} 个项目`;
+  const initialFiles = Array.isArray(leaf.mediaFiles) ? leaf.mediaFiles : [];
+  const totalFromLeaf = getLeafMediaTotal(leaf);
+  const displayTotal =
+    typeof totalFromLeaf === 'number'
+      ? Math.max(totalFromLeaf, initialFiles.length)
+      : initialFiles.length;
 
-  if (!leaf.mediaFiles.length) {
+  mediaHeadingEl.textContent = leaf.displayPath;
+  mediaCountEl.textContent = `${displayTotal} 个项目`;
+
+  const canLoadMore =
+    typeof totalFromLeaf === 'number'
+      ? totalFromLeaf > 0
+      : Boolean(mediaApi?.fetchNextMediaChunk);
+
+  if (!initialFiles.length && !canLoadMore) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'empty-state';
     emptyMessage.textContent = '该文件夹中没有媒体文件。';
@@ -1224,6 +1236,28 @@ function getActiveTagLabel() {
   return tag ? tag.label : currentState.activeTag;
 }
 
+function getLeafMediaTotal(leaf) {
+  if (!leaf || typeof leaf !== 'object') {
+    return null;
+  }
+
+  const candidates = [
+    leaf.totalMediaCount,
+    leaf.totalCount,
+    leaf.mediaCount,
+    leaf.count,
+    leaf.total,
+  ];
+
+  for (const candidate of candidates) {
+    if (typeof candidate === 'number' && Number.isFinite(candidate) && candidate >= 0) {
+      return candidate;
+    }
+  }
+
+  return null;
+}
+
 function startMediaLoadingForLeaf(leaf) {
   const controller = new AbortController();
   mediaRenderAbortController = controller;
@@ -1232,10 +1266,15 @@ function startMediaLoadingForLeaf(leaf) {
   }
 
   const files = Array.isArray(leaf?.mediaFiles) ? leaf.mediaFiles.slice() : [];
+  const totalHint = getLeafMediaTotal(leaf);
+  const initialTotal = Math.max(
+    files.length,
+    typeof totalHint === 'number' ? totalHint : 0
+  );
   const session = createEmptyMediaSession();
   mediaSessionSequence += 1;
   session.requestId = mediaSessionSequence;
-  session.totalCount = files.length;
+  session.totalCount = initialTotal;
   session.items = [];
   session.pendingIndex = null;
   session.leafPath = leaf?.path ?? null;
@@ -1273,6 +1312,16 @@ function startMediaLoadingForLeaf(leaf) {
       }
 
       handleMediaViewerItemsAppended(session);
+
+      if (
+        mediaSession === session &&
+        files.length === 0 &&
+        session.totalCount > 0 &&
+        mediaApi?.fetchNextMediaChunk &&
+        !controller.signal.aborted
+      ) {
+        void fetchNextMediaChunk(session);
+      }
     });
 }
 
@@ -1689,10 +1738,84 @@ function fetchNextMediaChunk(session) {
   if (!session) {
     return Promise.resolve();
   }
+
   if (session.loadingPromise) {
     return session.loadingPromise;
   }
-  return Promise.resolve();
+
+  if (!mediaApi?.fetchNextMediaChunk || !session.leafPath) {
+    return Promise.resolve();
+  }
+
+  const offset = Array.isArray(session.items) ? session.items.length : 0;
+  const requestId = session.requestId;
+
+  const promise = Promise.resolve(
+    mediaApi.fetchNextMediaChunk(session.leafPath, offset)
+  )
+    .then((result) => {
+      if (session !== mediaSession || requestId !== session.requestId) {
+        return;
+      }
+
+      const { files, totalCount } = normalizeMediaChunkResult(result);
+
+      if (typeof totalCount === 'number' && totalCount >= 0) {
+        const normalizedTotal = Math.max(totalCount, session.items.length);
+        if (normalizedTotal > session.totalCount) {
+          session.totalCount = normalizedTotal;
+        }
+        ensureMediaProgressTracking(normalizedTotal);
+      }
+
+      if (!Array.isArray(files) || !files.length) {
+        return;
+      }
+
+      const signal = mediaRenderAbortController?.signal;
+      if (signal?.aborted) {
+        return;
+      }
+
+      renderMediaChunk(session, files, signal);
+    })
+    .catch((error) => {
+      if (error?.name === 'AbortError') {
+        return;
+      }
+      console.error('Failed to fetch next media chunk', error);
+    })
+    .finally(() => {
+      if (session.loadingPromise === promise) {
+        session.loadingPromise = null;
+      }
+    });
+
+  session.loadingPromise = promise;
+  return promise;
+}
+
+function normalizeMediaChunkResult(result) {
+  if (!result) {
+    return { files: [] };
+  }
+
+  if (Array.isArray(result)) {
+    return { files: result };
+  }
+
+  const files = Array.isArray(result.files) ? result.files : [];
+
+  const totalCandidate = [
+    result.totalCount,
+    result.total,
+    result.count,
+    result.totalItems,
+  ].find((value) => typeof value === 'number' && Number.isFinite(value) && value >= 0);
+
+  const totalCount = typeof totalCandidate === 'number' ? totalCandidate : undefined;
+
+  return { files, totalCount };
 }
 
 function handleMediaViewerKeydown(event) {
@@ -1751,6 +1874,33 @@ function beginMediaProgress(total) {
   mediaProgressEl.hidden = false;
   mediaProgressEl.dataset.state = 'loading';
   updateMediaProgress(0);
+}
+
+function ensureMediaProgressTracking(total) {
+  if (!mediaProgressEl) {
+    return;
+  }
+
+  if (typeof total !== 'number' || Number.isNaN(total) || total <= 0) {
+    return;
+  }
+
+  const normalizedTotal = Math.max(total, mediaSession?.items?.length ?? 0);
+
+  if (normalizedTotal < MEDIA_PROGRESS_MIN_ITEMS) {
+    return;
+  }
+
+  if (mediaProgressTotalCount === 0) {
+    beginMediaProgress(normalizedTotal);
+    updateMediaProgress(mediaSession?.items?.length ?? 0);
+    return;
+  }
+
+  if (normalizedTotal > mediaProgressTotalCount) {
+    mediaProgressTotalCount = normalizedTotal;
+    updateMediaProgress(mediaSession?.items?.length ?? 0);
+  }
 }
 
 function showMediaPendingProgress(message) {
