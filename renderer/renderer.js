@@ -1,3 +1,5 @@
+import { createMediaViewer } from './media-viewer.js';
+
 const directoryListEl = document.getElementById('directory-list');
 const mediaGridEl = document.getElementById('media-grid');
 const mediaScrollContainer = document.querySelector('.media-panel-content');
@@ -63,7 +65,30 @@ let mediaProgressTotalCount = 0;
 let tagSearchDraft = currentState.tagSearchQuery || '';
 let mediaSessionSequence = 0;
 let mediaSession = createEmptyMediaSession();
-const mediaViewerState = createMediaViewerState();
+const mediaViewer = createMediaViewer({
+  elements: {
+    container: mediaViewerEl,
+    backdrop: mediaViewerBackdropEl,
+    closeButton: mediaViewerCloseButton,
+    prevButton: mediaViewerPrevButton,
+    nextButton: mediaViewerNextButton,
+    imageEl: mediaViewerImageEl,
+    videoEl: mediaViewerVideoEl,
+    loadingEl: mediaViewerLoadingEl,
+    filenameEl: mediaViewerFilenameEl,
+    counterEl: mediaViewerCounterEl,
+    openExternalButton: mediaViewerOpenExternalButton,
+  },
+  mediaApi,
+  getSession: () => mediaSession,
+  getSessionTotal: (session) => getMediaSessionTotal(session),
+  setPendingIndex: (value) => {
+    if (mediaSession) {
+      mediaSession.pendingIndex = value;
+    }
+  },
+  fetchMore: (session) => fetchNextMediaChunk(session),
+});
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
@@ -79,37 +104,6 @@ if (lazyThumbnailLoader?.reset) {
 
 render();
 
-if (mediaViewerCloseButton) {
-  mediaViewerCloseButton.addEventListener('click', () => closeMediaViewer());
-}
-
-if (mediaViewerBackdropEl) {
-  mediaViewerBackdropEl.addEventListener('click', () => closeMediaViewer());
-}
-
-if (mediaViewerPrevButton) {
-  mediaViewerPrevButton.addEventListener('click', () => stepMediaViewer(-1));
-}
-
-if (mediaViewerNextButton) {
-  mediaViewerNextButton.addEventListener('click', () => stepMediaViewer(1));
-}
-
-if (mediaViewerOpenExternalButton) {
-  mediaViewerOpenExternalButton.disabled = true;
-  mediaViewerOpenExternalButton.addEventListener('click', () => {
-    if (mediaViewerOpenExternalButton.disabled) {
-      return;
-    }
-
-    const path = mediaViewerState.currentFile?.path;
-    if (path) {
-      void mediaApi?.openFile?.(path);
-    }
-  });
-}
-
-document.addEventListener('keydown', handleMediaViewerKeydown);
 
 if (openDirectoryButton) {
   openDirectoryButton.addEventListener('click', () => {
@@ -851,7 +845,7 @@ function resetMediaView() {
   lazyThumbnailLoader.reset?.();
   resetMediaProgress();
   mediaSession = createEmptyMediaSession();
-  closeMediaViewer(true);
+  mediaViewer.reset();
 }
 
 function extractKeywords(name) {
@@ -1311,7 +1305,7 @@ function startMediaLoadingForLeaf(leaf) {
         }
       }
 
-      handleMediaViewerItemsAppended(session);
+      mediaViewer.handleItemsAppended(session);
 
       if (
         mediaSession === session &&
@@ -1363,7 +1357,7 @@ function renderMediaChunk(mediaSessionRef, chunk, signal) {
   }
 
   mediaGridEl.appendChild(fragment);
-  handleMediaViewerItemsAppended(mediaSessionRef);
+  mediaViewer.handleItemsAppended(mediaSessionRef);
 }
 
 function createEmptyMediaSession() {
@@ -1377,361 +1371,16 @@ function createEmptyMediaSession() {
   };
 }
 
-function createMediaViewerState() {
-  return {
-    isOpen: false,
-    index: -1,
-    sessionRequestId: 0,
-    currentFile: null,
-  };
-}
-
-function handleMediaViewerItemsAppended(session) {
-  if (!session || session !== mediaSession) {
-    return;
-  }
-
-  const total = getMediaSessionTotal(session);
-  if (
-    session.pendingIndex != null &&
-    session.pendingIndex >= 0 &&
-    session.pendingIndex < session.items.length &&
-    mediaViewerState.isOpen &&
-    mediaViewerState.sessionRequestId === session.requestId
-  ) {
-    const targetIndex = session.pendingIndex;
-    session.pendingIndex = null;
-    showMediaViewerItem(targetIndex);
-    return;
-  }
-
-  if (!mediaViewerState.isOpen) {
-    return;
-  }
-
-  updateMediaViewerNavigation(total);
-}
-
 function getMediaSessionTotal(session) {
   if (!session) {
     return 0;
   }
+
   if (typeof session.totalCount === 'number' && session.totalCount > 0) {
     return session.totalCount;
   }
+
   return Array.isArray(session.items) ? session.items.length : 0;
-}
-
-function ensureMediaViewerActive(sessionRequestId) {
-  if (!mediaViewerEl) {
-    return;
-  }
-
-  if (mediaViewerEl.hidden) {
-    mediaViewerEl.hidden = false;
-  }
-
-  mediaViewerEl.dataset.active = 'true';
-  mediaViewerEl.setAttribute('aria-hidden', 'false');
-  if (document?.body) {
-    document.body.dataset.mediaViewerOpen = 'true';
-  }
-
-  mediaViewerState.isOpen = true;
-  mediaViewerState.sessionRequestId = sessionRequestId;
-}
-
-function openMediaViewerAtIndex(index) {
-  if (typeof index !== 'number' || Number.isNaN(index)) {
-    return;
-  }
-
-  const session = mediaSession;
-  const total = getMediaSessionTotal(session);
-  if (!total) {
-    return;
-  }
-
-  const clampedIndex = Math.max(0, Math.min(index, total - 1));
-
-  if (!mediaViewerEl) {
-    const file = session.items?.[clampedIndex];
-    if (file?.path) {
-      void mediaApi?.openFile?.(file.path);
-    }
-    return;
-  }
-
-  ensureMediaViewerActive(session.requestId);
-
-  if (clampedIndex >= session.items.length) {
-    session.pendingIndex = clampedIndex;
-    showMediaViewerLoadingState(clampedIndex, total);
-    void fetchNextMediaChunk(session);
-    return;
-  }
-
-  session.pendingIndex = null;
-  showMediaViewerItem(clampedIndex);
-}
-
-function showMediaViewerLoadingState(index, total) {
-  ensureMediaViewerActive(mediaSession.requestId);
-  stopMediaViewerVideo();
-
-  if (mediaViewerImageEl) {
-    mediaViewerImageEl.src = '';
-    mediaViewerImageEl.hidden = true;
-    mediaViewerImageEl.alt = '';
-  }
-
-  if (mediaViewerVideoEl) {
-    mediaViewerVideoEl.hidden = true;
-    mediaViewerVideoEl.removeAttribute('src');
-  }
-
-  if (mediaViewerLoadingEl) {
-    mediaViewerLoadingEl.hidden = false;
-  }
-
-  if (mediaViewerFilenameEl) {
-    mediaViewerFilenameEl.textContent = '正在加载…';
-  }
-
-  if (mediaViewerCounterEl) {
-    if (typeof total === 'number' && total > 0) {
-      const safeIndex = Math.min(index, total - 1);
-      mediaViewerCounterEl.textContent = `${safeIndex + 1} / ${total}`;
-    } else {
-      mediaViewerCounterEl.textContent = '';
-    }
-  }
-
-  if (mediaViewerOpenExternalButton) {
-    mediaViewerOpenExternalButton.disabled = true;
-  }
-
-  mediaViewerState.index = index;
-  mediaViewerState.currentFile = null;
-  updateMediaViewerNavigation(total);
-}
-
-function showMediaViewerItem(index) {
-  const session = mediaSession;
-  if (!session || session.requestId === 0) {
-    return;
-  }
-
-  const total = getMediaSessionTotal(session);
-  if (!total) {
-    return;
-  }
-
-  const targetIndex = Math.max(0, Math.min(index, total - 1));
-
-  if (targetIndex >= session.items.length) {
-    session.pendingIndex = targetIndex;
-    showMediaViewerLoadingState(targetIndex, total);
-    void fetchNextMediaChunk(session);
-    return;
-  }
-
-  const file = session.items[targetIndex];
-  if (!file) {
-    return;
-  }
-
-  ensureMediaViewerActive(session.requestId);
-  session.pendingIndex = null;
-
-  if (mediaViewerLoadingEl) {
-    mediaViewerLoadingEl.hidden = true;
-  }
-
-  stopMediaViewerVideo();
-
-  const resolvedUrl =
-    file.fileUrl || (file.path ? `file://${encodeURI(file.path)}` : '');
-
-  if (file.type === 'video') {
-    if (mediaViewerVideoEl) {
-      if (resolvedUrl) {
-        mediaViewerVideoEl.src = resolvedUrl;
-      } else {
-        mediaViewerVideoEl.removeAttribute('src');
-      }
-      mediaViewerVideoEl.hidden = false;
-      mediaViewerVideoEl.load?.();
-    }
-    if (mediaViewerImageEl) {
-      mediaViewerImageEl.src = '';
-      mediaViewerImageEl.hidden = true;
-    }
-  } else {
-    if (mediaViewerImageEl) {
-      if (resolvedUrl) {
-        mediaViewerImageEl.src = resolvedUrl;
-      } else {
-        mediaViewerImageEl.removeAttribute('src');
-      }
-      mediaViewerImageEl.alt = file?.name || file?.path || '';
-      mediaViewerImageEl.hidden = false;
-    }
-    if (mediaViewerVideoEl) {
-      mediaViewerVideoEl.hidden = true;
-      mediaViewerVideoEl.removeAttribute('src');
-    }
-  }
-
-  if (mediaViewerFilenameEl) {
-    mediaViewerFilenameEl.textContent = file?.name || file?.path || '';
-  }
-
-  if (mediaViewerCounterEl) {
-    mediaViewerCounterEl.textContent = `${targetIndex + 1} / ${total}`;
-  }
-
-  if (mediaViewerOpenExternalButton) {
-    mediaViewerOpenExternalButton.disabled = !file?.path;
-  }
-
-  mediaViewerState.index = targetIndex;
-  mediaViewerState.currentFile = file;
-  mediaViewerState.sessionRequestId = session.requestId;
-
-  updateMediaViewerNavigation(total);
-
-  if (targetIndex >= session.items.length - 2 && session.items.length < total) {
-    void fetchNextMediaChunk(session);
-  }
-}
-
-function updateMediaViewerNavigation(totalOverride) {
-  if (!mediaViewerPrevButton && !mediaViewerNextButton) {
-    return;
-  }
-
-  const total =
-    typeof totalOverride === 'number' && totalOverride >= 0
-      ? totalOverride
-      : getMediaSessionTotal(mediaSession);
-
-  const activeIndex =
-    mediaSession.pendingIndex != null
-      ? mediaSession.pendingIndex
-      : mediaViewerState.index;
-
-  if (mediaViewerPrevButton) {
-    mediaViewerPrevButton.disabled =
-      !mediaViewerState.isOpen || total <= 0 || activeIndex <= 0;
-  }
-
-  if (mediaViewerNextButton) {
-    mediaViewerNextButton.disabled =
-      !mediaViewerState.isOpen || total <= 0 || activeIndex >= total - 1;
-  }
-}
-
-function stepMediaViewer(delta) {
-  if (!mediaViewerState.isOpen || typeof delta !== 'number' || !delta) {
-    return;
-  }
-
-  const total = getMediaSessionTotal(mediaSession);
-  if (!total) {
-    return;
-  }
-
-  const currentIndex =
-    mediaSession.pendingIndex != null
-      ? mediaSession.pendingIndex
-      : mediaViewerState.index;
-
-  if (currentIndex < 0) {
-    return;
-  }
-
-  const nextIndex = Math.max(0, Math.min(currentIndex + delta, total - 1));
-  if (nextIndex === currentIndex) {
-    return;
-  }
-
-  openMediaViewerAtIndex(nextIndex);
-}
-
-function closeMediaViewer(force = false) {
-  if (!mediaViewerEl) {
-    mediaViewerState.isOpen = false;
-    mediaViewerState.index = -1;
-    mediaViewerState.currentFile = null;
-    mediaViewerState.sessionRequestId = 0;
-    mediaSession.pendingIndex = null;
-    return;
-  }
-
-  mediaSession.pendingIndex = null;
-
-  if (!mediaViewerState.isOpen && !force) {
-    return;
-  }
-
-  stopMediaViewerVideo();
-
-  if (mediaViewerImageEl) {
-    mediaViewerImageEl.src = '';
-    mediaViewerImageEl.hidden = true;
-    mediaViewerImageEl.alt = '';
-  }
-
-  if (mediaViewerVideoEl) {
-    mediaViewerVideoEl.hidden = true;
-    mediaViewerVideoEl.removeAttribute('src');
-  }
-
-  if (mediaViewerLoadingEl) {
-    mediaViewerLoadingEl.hidden = true;
-  }
-
-  if (mediaViewerFilenameEl) {
-    mediaViewerFilenameEl.textContent = '';
-  }
-
-  if (mediaViewerCounterEl) {
-    mediaViewerCounterEl.textContent = '';
-  }
-
-  if (mediaViewerOpenExternalButton) {
-    mediaViewerOpenExternalButton.disabled = true;
-  }
-
-  delete mediaViewerEl.dataset.active;
-  mediaViewerEl.setAttribute('aria-hidden', 'true');
-  mediaViewerEl.hidden = true;
-
-  if (document?.body) {
-    delete document.body.dataset.mediaViewerOpen;
-  }
-
-  mediaViewerState.isOpen = false;
-  mediaViewerState.index = -1;
-  mediaViewerState.currentFile = null;
-  mediaViewerState.sessionRequestId = 0;
-
-  updateMediaViewerNavigation(0);
-}
-
-function stopMediaViewerVideo() {
-  if (!mediaViewerVideoEl) {
-    return;
-  }
-
-  try {
-    mediaViewerVideoEl.pause();
-  } catch (error) {
-    // 忽略无法暂停视频的情况，以免影响关闭流程。
-  }
-  mediaViewerVideoEl.removeAttribute('src');
-  mediaViewerVideoEl.load?.();
 }
 
 function fetchNextMediaChunk(session) {
@@ -1816,29 +1465,6 @@ function normalizeMediaChunkResult(result) {
   const totalCount = typeof totalCandidate === 'number' ? totalCandidate : undefined;
 
   return { files, totalCount };
-}
-
-function handleMediaViewerKeydown(event) {
-  if (!mediaViewerState.isOpen) {
-    return;
-  }
-
-  if (event.key === 'Escape') {
-    event.preventDefault();
-    closeMediaViewer();
-    return;
-  }
-
-  if (event.key === 'ArrowLeft') {
-    event.preventDefault();
-    stepMediaViewer(-1);
-    return;
-  }
-
-  if (event.key === 'ArrowRight') {
-    event.preventDefault();
-    stepMediaViewer(1);
-  }
 }
 
 function waitForNextFrame() {
@@ -2106,7 +1732,7 @@ function createMediaCard(file, signal, index) {
       event.preventDefault();
     }
 
-    openMediaViewerAtIndex(index);
+    mediaViewer.openAtIndex(index);
   };
 
   card.addEventListener('click', activate);
