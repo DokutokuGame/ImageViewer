@@ -27,6 +27,7 @@ const alphabeticalCollator = new Intl.Collator(['en', 'zh-Hans'], {
 });
 const MEDIA_RENDER_BATCH_SIZE = 12;
 const MEDIA_PROGRESS_MIN_ITEMS = MEDIA_RENDER_BATCH_SIZE * 2;
+const MEDIA_FETCH_PAGE_SIZE = 120;
 
 let currentState = {
   root: null,
@@ -40,6 +41,7 @@ let currentState = {
   tagSearchQuery: '',
   excludedTags: loadExcludedTags(),
   excludedTagPanelExpanded: false,
+  leavesVersion: 0,
 };
 
 let mediaRenderAbortController = null;
@@ -48,6 +50,8 @@ const lazyThumbnailLoader = createLazyThumbnailLoader();
 let mediaProgressHideTimer = null;
 let mediaProgressTotalCount = 0;
 let tagSearchDraft = currentState.tagSearchQuery || '';
+let mediaRequestSequence = 0;
+let mediaSession = createEmptyMediaSession();
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
@@ -111,6 +115,17 @@ function updateState(patch) {
 
   if ('leaves' in patch && !Array.isArray(nextState.leaves)) {
     nextState.leaves = [];
+  }
+
+  if ('leaves' in patch) {
+    const previousVersion = Number.isInteger(currentState.leavesVersion)
+      ? currentState.leavesVersion
+      : 0;
+    nextState.leavesVersion = previousVersion + 1;
+  } else if (!Number.isInteger(nextState.leavesVersion)) {
+    nextState.leavesVersion = Number.isInteger(currentState.leavesVersion)
+      ? currentState.leavesVersion
+      : 0;
   }
 
   if ('excludedTags' in patch) {
@@ -621,7 +636,10 @@ function renderDirectoryList() {
 
     const count = document.createElement('span');
     count.className = 'media-meta';
-    count.textContent = `${leaf.mediaFiles.length}`;
+    const itemCount = Number.isFinite(leaf.mediaFileCount)
+      ? leaf.mediaFileCount
+      : 0;
+    count.textContent = `${itemCount}`;
 
     item.appendChild(name);
     item.appendChild(count);
@@ -745,36 +763,48 @@ async function handleSavedTagRemoval(event, tag, label) {
 }
 
 function renderMedia() {
-  if (mediaRenderAbortController) {
-    mediaRenderAbortController.abort();
-  }
-  mediaRenderAbortController = null;
-  delete mediaGridEl.dataset.loading;
-  lazyThumbnailLoader.reset?.();
-  mediaGridEl.innerHTML = '';
-  resetMediaProgress();
+  const selectedPath = currentState.selectedPath;
 
-  updateOpenDirectoryButton(null);
-
-  if (!currentState.selectedPath) {
+  if (!selectedPath) {
+    updateOpenDirectoryButton(null);
     mediaHeadingEl.textContent = '媒体';
     mediaCountEl.textContent = '';
+    abortMediaRender();
+    resetMediaView();
+    mediaSession = createEmptyMediaSession();
     return;
   }
 
-  const leaf = currentState.leaves.find((item) => item.path === currentState.selectedPath);
+  const leaf = currentState.leaves.find((item) => item.path === selectedPath);
   if (!leaf) {
+    updateOpenDirectoryButton(null);
     mediaHeadingEl.textContent = '媒体';
     mediaCountEl.textContent = '';
+    abortMediaRender();
+    resetMediaView();
+    mediaSession = createEmptyMediaSession();
     return;
   }
 
   updateOpenDirectoryButton(leaf);
 
+  const itemCount = Number.isFinite(leaf.mediaFileCount) ? leaf.mediaFileCount : 0;
   mediaHeadingEl.textContent = leaf.displayPath;
-  mediaCountEl.textContent = `${leaf.mediaFiles.length} 个项目`;
+  mediaCountEl.textContent = `${itemCount} 个项目`;
 
-  if (!leaf.mediaFiles.length) {
+  const needsReload =
+    mediaSession.path !== leaf.path || mediaSession.sourceVersion !== currentState.leavesVersion;
+
+  if (!needsReload) {
+    return;
+  }
+
+  abortMediaRender();
+  resetMediaView();
+
+  mediaSession = createEmptyMediaSession();
+
+  if (!itemCount) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'empty-state';
     emptyMessage.textContent = '该文件夹中没有媒体文件。';
@@ -782,7 +812,210 @@ function renderMedia() {
     return;
   }
 
-  startMediaRender(leaf.mediaFiles);
+  if (!mediaApi?.listMediaFiles) {
+    showMediaLoadError('当前版本无法加载媒体文件。');
+    return;
+  }
+
+  startMediaLoadingForLeaf(leaf, itemCount);
+}
+
+function abortMediaRender() {
+  if (mediaRenderAbortController) {
+    mediaRenderAbortController.abort();
+    mediaRenderAbortController = null;
+  }
+}
+
+function resetMediaView() {
+  delete mediaGridEl.dataset.loading;
+  lazyThumbnailLoader.reset?.();
+  mediaGridEl.innerHTML = '';
+  resetMediaProgress();
+}
+
+function startMediaLoadingForLeaf(leaf, totalCount) {
+  const requestId = ++mediaRequestSequence;
+  mediaSession = {
+    path: leaf.path,
+    total: totalCount,
+    nextOffset: 0,
+    loading: false,
+    renderedCount: 0,
+    requestId,
+    done: false,
+    sourceVersion: currentState.leavesVersion,
+  };
+
+  mediaRenderAbortController = new AbortController();
+  mediaGridEl.dataset.loading = 'true';
+  beginMediaProgress(totalCount);
+
+  void fetchNextMediaChunk(mediaSession);
+}
+
+async function fetchNextMediaChunk(session) {
+  if (!session || session.done || session.loading) {
+    return;
+  }
+
+  if (mediaSession.requestId !== session.requestId) {
+    return;
+  }
+
+  if (!mediaApi?.listMediaFiles) {
+    session.done = true;
+    showMediaLoadError('无法加载媒体文件。');
+    failMediaProgress();
+    delete mediaGridEl.dataset.loading;
+    mediaRenderAbortController = null;
+    mediaSession = createEmptyMediaSession();
+    return;
+  }
+
+  session.loading = true;
+  const offset = session.nextOffset;
+  const limit = MEDIA_FETCH_PAGE_SIZE;
+  const requestId = session.requestId;
+
+  let response;
+  try {
+    response = await mediaApi.listMediaFiles(session.path, { offset, limit });
+  } catch (error) {
+    session.loading = false;
+    if (mediaSession.requestId !== requestId) {
+      return;
+    }
+    console.error('Failed to load media files', error);
+    session.done = true;
+    showMediaLoadError('无法加载媒体文件。');
+    failMediaProgress();
+    delete mediaGridEl.dataset.loading;
+    mediaRenderAbortController = null;
+    mediaSession = createEmptyMediaSession();
+    return;
+  }
+
+  if (mediaSession.requestId !== requestId) {
+    return;
+  }
+
+  session.loading = false;
+
+  if (response?.error) {
+    session.done = true;
+    showMediaLoadError(response.error || '无法加载媒体文件。');
+    failMediaProgress();
+    delete mediaGridEl.dataset.loading;
+    mediaRenderAbortController = null;
+    mediaSession = createEmptyMediaSession();
+    return;
+  }
+
+  const files = Array.isArray(response?.files) ? response.files : [];
+  const total = Number.isFinite(response?.total) ? response.total : session.total;
+  session.total = total;
+
+  if (total >= MEDIA_PROGRESS_MIN_ITEMS) {
+    mediaProgressTotalCount = total;
+    updateMediaProgress(Math.min(session.renderedCount, total));
+  }
+
+  const inferredNextOffset = offset + files.length;
+  let nextOffset = inferredNextOffset;
+  if (Number.isFinite(response?.nextOffset)) {
+    nextOffset = Math.max(response.nextOffset, inferredNextOffset);
+  }
+  session.nextOffset = Math.min(nextOffset, Math.max(total, 0));
+
+  const hasMore = Boolean(response?.hasMore) || session.nextOffset < total;
+
+  if (!files.length) {
+    if (!hasMore && session.renderedCount === 0) {
+      const emptyMessage = document.createElement('p');
+      emptyMessage.className = 'empty-state';
+      emptyMessage.textContent = '该文件夹中没有媒体文件。';
+      mediaGridEl.appendChild(emptyMessage);
+    }
+
+    if (!hasMore) {
+      session.done = true;
+      delete mediaGridEl.dataset.loading;
+      mediaRenderAbortController = null;
+      finishMediaProgress();
+    }
+    return;
+  }
+
+  await renderMediaChunk(files, session.total, requestId);
+
+  if (mediaSession.requestId !== requestId) {
+    return;
+  }
+
+  if (!hasMore || session.nextOffset >= session.total) {
+    session.done = true;
+    delete mediaGridEl.dataset.loading;
+    mediaRenderAbortController = null;
+    finishMediaProgress();
+    return;
+  }
+
+  Promise.resolve().then(() => fetchNextMediaChunk(session));
+}
+
+async function renderMediaChunk(files, totalCount, requestId) {
+  const controller = mediaRenderAbortController;
+  if (!controller || mediaSession.requestId !== requestId) {
+    return;
+  }
+
+  const queue = Array.isArray(files) ? files.slice() : [];
+
+  while (queue.length && !controller.signal.aborted) {
+    const fragment = document.createDocumentFragment();
+    let count = 0;
+
+    while (queue.length && count < MEDIA_RENDER_BATCH_SIZE && !controller.signal.aborted) {
+      const file = queue.shift();
+      fragment.appendChild(createMediaCard(file, controller.signal));
+      count += 1;
+      mediaSession.renderedCount += 1;
+      if (totalCount > 0) {
+        const loaded = Math.min(mediaSession.renderedCount, totalCount);
+        updateMediaProgress(loaded);
+      }
+    }
+
+    mediaGridEl.appendChild(fragment);
+
+    if (queue.length && !controller.signal.aborted) {
+      await waitForNextFrame();
+    }
+  }
+}
+
+function showMediaLoadError(message) {
+  const emptyMessage = document.createElement('p');
+  emptyMessage.className = 'empty-state';
+  emptyMessage.textContent = message || '无法加载媒体文件。';
+  mediaGridEl.appendChild(emptyMessage);
+}
+
+function createEmptyMediaSession() {
+  const version = Number.isInteger(currentState?.leavesVersion)
+    ? currentState.leavesVersion
+    : 0;
+  return {
+    path: null,
+    total: 0,
+    nextOffset: 0,
+    loading: false,
+    renderedCount: 0,
+    requestId: 0,
+    done: true,
+    sourceVersion: version,
+  };
 }
 
 function extractKeywords(name) {
@@ -1165,63 +1398,6 @@ function getActiveTagLabel() {
   }
   const tag = currentState.derivedTags.find((item) => item.id === currentState.activeTag);
   return tag ? tag.label : currentState.activeTag;
-}
-
-function startMediaRender(files) {
-  const controller = new AbortController();
-  mediaRenderAbortController = controller;
-  mediaGridEl.dataset.loading = 'true';
-
-  const total = Array.isArray(files) ? files.length : 0;
-  beginMediaProgress(total);
-
-  let renderFailed = false;
-
-  renderMediaIncrementally(files, controller.signal, total)
-    .catch((error) => {
-      if (error?.name !== 'AbortError') {
-        renderFailed = true;
-        console.error('Failed to render media items', error);
-        failMediaProgress();
-      }
-    })
-    .finally(() => {
-      if (mediaRenderAbortController === controller) {
-        delete mediaGridEl.dataset.loading;
-        mediaRenderAbortController = null;
-        if (!renderFailed) {
-          finishMediaProgress();
-        }
-      }
-    });
-}
-
-async function renderMediaIncrementally(files, signal, totalCount) {
-  const queue = Array.isArray(files) ? files.slice() : [];
-  const total = typeof totalCount === 'number' ? totalCount : queue.length;
-  let renderedCount = 0;
-
-  while (queue.length && !signal.aborted) {
-    const fragment = document.createDocumentFragment();
-    let count = 0;
-
-    while (queue.length && count < MEDIA_RENDER_BATCH_SIZE && !signal.aborted) {
-      const file = queue.shift();
-      fragment.appendChild(createMediaCard(file, signal));
-      count += 1;
-      renderedCount += 1;
-      if (total > 0) {
-        renderedCount = Math.min(renderedCount, total);
-      }
-      updateMediaProgress(renderedCount);
-    }
-
-    mediaGridEl.appendChild(fragment);
-
-    if (queue.length && !signal.aborted) {
-      await waitForNextFrame();
-    }
-  }
 }
 
 function waitForNextFrame() {

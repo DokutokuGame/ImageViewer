@@ -1,6 +1,6 @@
 const { app, BrowserWindow, ipcMain, dialog, shell } = require('electron');
 const path = require('path');
-const { collectLeafDirectories } = require('./directoryScanner');
+const { collectLeafDirectories, listMediaFiles } = require('./directoryScanner');
 const {
   initPreferences,
   getRootTags,
@@ -75,6 +75,33 @@ ipcMain.handle('scan-directory', async (_event, rootPath) => {
 
   const leaves = await collectLeafDirectories(rootPath);
   return leaves;
+});
+
+ipcMain.handle('list-media-files', async (_event, directoryPath, options = {}) => {
+  if (!directoryPath) {
+    return {
+      files: [],
+      total: 0,
+      offset: 0,
+      nextOffset: 0,
+      hasMore: false,
+      error: 'Missing directory path',
+    };
+  }
+
+  try {
+    return await listMediaFiles(directoryPath, options);
+  } catch (error) {
+    console.error('Failed to list media files', error);
+    return {
+      files: [],
+      total: 0,
+      offset: 0,
+      nextOffset: 0,
+      hasMore: false,
+      error: error instanceof Error ? error.message : String(error),
+    };
+  }
 });
 
 ipcMain.handle('get-root-tags', async () => {
