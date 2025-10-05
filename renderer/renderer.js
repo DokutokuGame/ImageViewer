@@ -11,6 +11,19 @@ const filterTagListEl = document.getElementById('filter-tag-list');
 const mediaProgressEl = document.getElementById('media-progress');
 const mediaProgressBarEl = document.getElementById('media-progress-bar');
 const mediaProgressLabelEl = document.getElementById('media-progress-label');
+const mediaViewerEl = document.getElementById('media-viewer');
+const mediaViewerBackdropEl = document.getElementById('media-viewer-backdrop');
+const mediaViewerCloseButton = document.getElementById('media-viewer-close');
+const mediaViewerPrevButton = document.getElementById('media-viewer-prev');
+const mediaViewerNextButton = document.getElementById('media-viewer-next');
+const mediaViewerImageEl = document.getElementById('media-viewer-image');
+const mediaViewerVideoEl = document.getElementById('media-viewer-video');
+const mediaViewerLoadingEl = document.getElementById('media-viewer-loading');
+const mediaViewerFilenameEl = document.getElementById('media-viewer-filename');
+const mediaViewerCounterEl = document.getElementById('media-viewer-counter');
+const mediaViewerOpenExternalButton = document.getElementById(
+  'media-viewer-open-external'
+);
 const mediaApi = window.mediaApi;
 
 const MIN_TAG_OCCURRENCE = 2;
@@ -48,6 +61,9 @@ const lazyThumbnailLoader = createLazyThumbnailLoader();
 let mediaProgressHideTimer = null;
 let mediaProgressTotalCount = 0;
 let tagSearchDraft = currentState.tagSearchQuery || '';
+let mediaSessionSequence = 0;
+let mediaSession = createEmptyMediaSession();
+const mediaViewerState = createMediaViewerState();
 
 if (imageLoader?.dispose) {
   window.addEventListener('beforeunload', () => {
@@ -62,6 +78,38 @@ if (lazyThumbnailLoader?.reset) {
 }
 
 render();
+
+if (mediaViewerCloseButton) {
+  mediaViewerCloseButton.addEventListener('click', () => closeMediaViewer());
+}
+
+if (mediaViewerBackdropEl) {
+  mediaViewerBackdropEl.addEventListener('click', () => closeMediaViewer());
+}
+
+if (mediaViewerPrevButton) {
+  mediaViewerPrevButton.addEventListener('click', () => stepMediaViewer(-1));
+}
+
+if (mediaViewerNextButton) {
+  mediaViewerNextButton.addEventListener('click', () => stepMediaViewer(1));
+}
+
+if (mediaViewerOpenExternalButton) {
+  mediaViewerOpenExternalButton.disabled = true;
+  mediaViewerOpenExternalButton.addEventListener('click', () => {
+    if (mediaViewerOpenExternalButton.disabled) {
+      return;
+    }
+
+    const path = mediaViewerState.currentFile?.path;
+    if (path) {
+      void mediaApi?.openFile?.(path);
+    }
+  });
+}
+
+document.addEventListener('keydown', handleMediaViewerKeydown);
 
 if (openDirectoryButton) {
   openDirectoryButton.addEventListener('click', () => {
@@ -745,15 +793,7 @@ async function handleSavedTagRemoval(event, tag, label) {
 }
 
 function renderMedia() {
-  if (mediaRenderAbortController) {
-    mediaRenderAbortController.abort();
-  }
-  mediaRenderAbortController = null;
-  delete mediaGridEl.dataset.loading;
-  lazyThumbnailLoader.reset?.();
-  mediaGridEl.innerHTML = '';
-  resetMediaProgress();
-
+  resetMediaView();
   updateOpenDirectoryButton(null);
 
   if (!currentState.selectedPath) {
@@ -782,7 +822,24 @@ function renderMedia() {
     return;
   }
 
-  startMediaRender(leaf.mediaFiles);
+  startMediaLoadingForLeaf(leaf);
+}
+
+function resetMediaView() {
+  if (mediaRenderAbortController) {
+    mediaRenderAbortController.abort();
+  }
+  mediaRenderAbortController = null;
+
+  if (mediaGridEl) {
+    delete mediaGridEl.dataset.loading;
+    mediaGridEl.innerHTML = '';
+  }
+
+  lazyThumbnailLoader.reset?.();
+  resetMediaProgress();
+  mediaSession = createEmptyMediaSession();
+  closeMediaViewer(true);
 }
 
 function extractKeywords(name) {
@@ -1167,17 +1224,32 @@ function getActiveTagLabel() {
   return tag ? tag.label : currentState.activeTag;
 }
 
-function startMediaRender(files) {
+function startMediaLoadingForLeaf(leaf) {
   const controller = new AbortController();
   mediaRenderAbortController = controller;
-  mediaGridEl.dataset.loading = 'true';
+  if (mediaGridEl) {
+    mediaGridEl.dataset.loading = 'true';
+  }
 
-  const total = Array.isArray(files) ? files.length : 0;
-  beginMediaProgress(total);
+  const files = Array.isArray(leaf?.mediaFiles) ? leaf.mediaFiles.slice() : [];
+  const session = createEmptyMediaSession();
+  mediaSessionSequence += 1;
+  session.requestId = mediaSessionSequence;
+  session.totalCount = files.length;
+  session.items = [];
+  session.pendingIndex = null;
+  session.leafPath = leaf?.path ?? null;
+  mediaSession = session;
+
+  beginMediaProgress(session.totalCount);
 
   let renderFailed = false;
 
-  renderMediaIncrementally(files, controller.signal, total)
+  const renderPromise = renderMediaIncrementally(session, files, controller.signal);
+
+  session.loadingPromise = renderPromise;
+
+  renderPromise
     .catch((error) => {
       if (error?.name !== 'AbortError') {
         renderFailed = true;
@@ -1186,41 +1258,463 @@ function startMediaRender(files) {
       }
     })
     .finally(() => {
+      if (mediaSession === session) {
+        session.loadingPromise = null;
+      }
+
       if (mediaRenderAbortController === controller) {
-        delete mediaGridEl.dataset.loading;
+        if (mediaGridEl) {
+          delete mediaGridEl.dataset.loading;
+        }
         mediaRenderAbortController = null;
         if (!renderFailed) {
           finishMediaProgress();
         }
       }
+
+      handleMediaViewerItemsAppended(session);
     });
 }
 
-async function renderMediaIncrementally(files, signal, totalCount) {
+async function renderMediaIncrementally(mediaSessionRef, files, signal) {
   const queue = Array.isArray(files) ? files.slice() : [];
-  const total = typeof totalCount === 'number' ? totalCount : queue.length;
-  let renderedCount = 0;
 
   while (queue.length && !signal.aborted) {
-    const fragment = document.createDocumentFragment();
-    let count = 0;
-
-    while (queue.length && count < MEDIA_RENDER_BATCH_SIZE && !signal.aborted) {
-      const file = queue.shift();
-      fragment.appendChild(createMediaCard(file, signal));
-      count += 1;
-      renderedCount += 1;
-      if (total > 0) {
-        renderedCount = Math.min(renderedCount, total);
-      }
-      updateMediaProgress(renderedCount);
-    }
-
-    mediaGridEl.appendChild(fragment);
+    const chunk = queue.splice(0, MEDIA_RENDER_BATCH_SIZE);
+    renderMediaChunk(mediaSessionRef, chunk, signal);
 
     if (queue.length && !signal.aborted) {
       await waitForNextFrame();
     }
+  }
+}
+
+function renderMediaChunk(mediaSessionRef, chunk, signal) {
+  if (!Array.isArray(chunk) || !chunk.length || signal?.aborted) {
+    return;
+  }
+
+  const fragment = document.createDocumentFragment();
+  let appended = 0;
+
+  for (const file of chunk) {
+    const index = mediaSessionRef.items.length;
+    mediaSessionRef.items.push(file);
+    fragment.appendChild(createMediaCard(file, signal, index));
+    appended += 1;
+    updateMediaProgress(mediaSessionRef.items.length);
+  }
+
+  if (!appended) {
+    return;
+  }
+
+  if (!mediaGridEl) {
+    return;
+  }
+
+  mediaGridEl.appendChild(fragment);
+  handleMediaViewerItemsAppended(mediaSessionRef);
+}
+
+function createEmptyMediaSession() {
+  return {
+    requestId: 0,
+    totalCount: 0,
+    items: [],
+    pendingIndex: null,
+    loadingPromise: null,
+    leafPath: null,
+  };
+}
+
+function createMediaViewerState() {
+  return {
+    isOpen: false,
+    index: -1,
+    sessionRequestId: 0,
+    currentFile: null,
+  };
+}
+
+function handleMediaViewerItemsAppended(session) {
+  if (!session || session !== mediaSession) {
+    return;
+  }
+
+  const total = getMediaSessionTotal(session);
+  if (
+    session.pendingIndex != null &&
+    session.pendingIndex >= 0 &&
+    session.pendingIndex < session.items.length &&
+    mediaViewerState.isOpen &&
+    mediaViewerState.sessionRequestId === session.requestId
+  ) {
+    const targetIndex = session.pendingIndex;
+    session.pendingIndex = null;
+    showMediaViewerItem(targetIndex);
+    return;
+  }
+
+  if (!mediaViewerState.isOpen) {
+    return;
+  }
+
+  updateMediaViewerNavigation(total);
+}
+
+function getMediaSessionTotal(session) {
+  if (!session) {
+    return 0;
+  }
+  if (typeof session.totalCount === 'number' && session.totalCount > 0) {
+    return session.totalCount;
+  }
+  return Array.isArray(session.items) ? session.items.length : 0;
+}
+
+function ensureMediaViewerActive(sessionRequestId) {
+  if (!mediaViewerEl) {
+    return;
+  }
+
+  if (mediaViewerEl.hidden) {
+    mediaViewerEl.hidden = false;
+  }
+
+  mediaViewerEl.dataset.active = 'true';
+  mediaViewerEl.setAttribute('aria-hidden', 'false');
+  if (document?.body) {
+    document.body.dataset.mediaViewerOpen = 'true';
+  }
+
+  mediaViewerState.isOpen = true;
+  mediaViewerState.sessionRequestId = sessionRequestId;
+}
+
+function openMediaViewerAtIndex(index) {
+  if (typeof index !== 'number' || Number.isNaN(index)) {
+    return;
+  }
+
+  const session = mediaSession;
+  const total = getMediaSessionTotal(session);
+  if (!total) {
+    return;
+  }
+
+  const clampedIndex = Math.max(0, Math.min(index, total - 1));
+
+  if (!mediaViewerEl) {
+    const file = session.items?.[clampedIndex];
+    if (file?.path) {
+      void mediaApi?.openFile?.(file.path);
+    }
+    return;
+  }
+
+  ensureMediaViewerActive(session.requestId);
+
+  if (clampedIndex >= session.items.length) {
+    session.pendingIndex = clampedIndex;
+    showMediaViewerLoadingState(clampedIndex, total);
+    void fetchNextMediaChunk(session);
+    return;
+  }
+
+  session.pendingIndex = null;
+  showMediaViewerItem(clampedIndex);
+}
+
+function showMediaViewerLoadingState(index, total) {
+  ensureMediaViewerActive(mediaSession.requestId);
+  stopMediaViewerVideo();
+
+  if (mediaViewerImageEl) {
+    mediaViewerImageEl.src = '';
+    mediaViewerImageEl.hidden = true;
+    mediaViewerImageEl.alt = '';
+  }
+
+  if (mediaViewerVideoEl) {
+    mediaViewerVideoEl.hidden = true;
+    mediaViewerVideoEl.removeAttribute('src');
+  }
+
+  if (mediaViewerLoadingEl) {
+    mediaViewerLoadingEl.hidden = false;
+  }
+
+  if (mediaViewerFilenameEl) {
+    mediaViewerFilenameEl.textContent = '正在加载…';
+  }
+
+  if (mediaViewerCounterEl) {
+    if (typeof total === 'number' && total > 0) {
+      const safeIndex = Math.min(index, total - 1);
+      mediaViewerCounterEl.textContent = `${safeIndex + 1} / ${total}`;
+    } else {
+      mediaViewerCounterEl.textContent = '';
+    }
+  }
+
+  if (mediaViewerOpenExternalButton) {
+    mediaViewerOpenExternalButton.disabled = true;
+  }
+
+  mediaViewerState.index = index;
+  mediaViewerState.currentFile = null;
+  updateMediaViewerNavigation(total);
+}
+
+function showMediaViewerItem(index) {
+  const session = mediaSession;
+  if (!session || session.requestId === 0) {
+    return;
+  }
+
+  const total = getMediaSessionTotal(session);
+  if (!total) {
+    return;
+  }
+
+  const targetIndex = Math.max(0, Math.min(index, total - 1));
+
+  if (targetIndex >= session.items.length) {
+    session.pendingIndex = targetIndex;
+    showMediaViewerLoadingState(targetIndex, total);
+    void fetchNextMediaChunk(session);
+    return;
+  }
+
+  const file = session.items[targetIndex];
+  if (!file) {
+    return;
+  }
+
+  ensureMediaViewerActive(session.requestId);
+  session.pendingIndex = null;
+
+  if (mediaViewerLoadingEl) {
+    mediaViewerLoadingEl.hidden = true;
+  }
+
+  stopMediaViewerVideo();
+
+  const resolvedUrl =
+    file.fileUrl || (file.path ? `file://${encodeURI(file.path)}` : '');
+
+  if (file.type === 'video') {
+    if (mediaViewerVideoEl) {
+      if (resolvedUrl) {
+        mediaViewerVideoEl.src = resolvedUrl;
+      } else {
+        mediaViewerVideoEl.removeAttribute('src');
+      }
+      mediaViewerVideoEl.hidden = false;
+      mediaViewerVideoEl.load?.();
+    }
+    if (mediaViewerImageEl) {
+      mediaViewerImageEl.src = '';
+      mediaViewerImageEl.hidden = true;
+    }
+  } else {
+    if (mediaViewerImageEl) {
+      if (resolvedUrl) {
+        mediaViewerImageEl.src = resolvedUrl;
+      } else {
+        mediaViewerImageEl.removeAttribute('src');
+      }
+      mediaViewerImageEl.alt = file?.name || file?.path || '';
+      mediaViewerImageEl.hidden = false;
+    }
+    if (mediaViewerVideoEl) {
+      mediaViewerVideoEl.hidden = true;
+      mediaViewerVideoEl.removeAttribute('src');
+    }
+  }
+
+  if (mediaViewerFilenameEl) {
+    mediaViewerFilenameEl.textContent = file?.name || file?.path || '';
+  }
+
+  if (mediaViewerCounterEl) {
+    mediaViewerCounterEl.textContent = `${targetIndex + 1} / ${total}`;
+  }
+
+  if (mediaViewerOpenExternalButton) {
+    mediaViewerOpenExternalButton.disabled = !file?.path;
+  }
+
+  mediaViewerState.index = targetIndex;
+  mediaViewerState.currentFile = file;
+  mediaViewerState.sessionRequestId = session.requestId;
+
+  updateMediaViewerNavigation(total);
+
+  if (targetIndex >= session.items.length - 2 && session.items.length < total) {
+    void fetchNextMediaChunk(session);
+  }
+}
+
+function updateMediaViewerNavigation(totalOverride) {
+  if (!mediaViewerPrevButton && !mediaViewerNextButton) {
+    return;
+  }
+
+  const total =
+    typeof totalOverride === 'number' && totalOverride >= 0
+      ? totalOverride
+      : getMediaSessionTotal(mediaSession);
+
+  const activeIndex =
+    mediaSession.pendingIndex != null
+      ? mediaSession.pendingIndex
+      : mediaViewerState.index;
+
+  if (mediaViewerPrevButton) {
+    mediaViewerPrevButton.disabled =
+      !mediaViewerState.isOpen || total <= 0 || activeIndex <= 0;
+  }
+
+  if (mediaViewerNextButton) {
+    mediaViewerNextButton.disabled =
+      !mediaViewerState.isOpen || total <= 0 || activeIndex >= total - 1;
+  }
+}
+
+function stepMediaViewer(delta) {
+  if (!mediaViewerState.isOpen || typeof delta !== 'number' || !delta) {
+    return;
+  }
+
+  const total = getMediaSessionTotal(mediaSession);
+  if (!total) {
+    return;
+  }
+
+  const currentIndex =
+    mediaSession.pendingIndex != null
+      ? mediaSession.pendingIndex
+      : mediaViewerState.index;
+
+  if (currentIndex < 0) {
+    return;
+  }
+
+  const nextIndex = Math.max(0, Math.min(currentIndex + delta, total - 1));
+  if (nextIndex === currentIndex) {
+    return;
+  }
+
+  openMediaViewerAtIndex(nextIndex);
+}
+
+function closeMediaViewer(force = false) {
+  if (!mediaViewerEl) {
+    mediaViewerState.isOpen = false;
+    mediaViewerState.index = -1;
+    mediaViewerState.currentFile = null;
+    mediaViewerState.sessionRequestId = 0;
+    mediaSession.pendingIndex = null;
+    return;
+  }
+
+  mediaSession.pendingIndex = null;
+
+  if (!mediaViewerState.isOpen && !force) {
+    return;
+  }
+
+  stopMediaViewerVideo();
+
+  if (mediaViewerImageEl) {
+    mediaViewerImageEl.src = '';
+    mediaViewerImageEl.hidden = true;
+    mediaViewerImageEl.alt = '';
+  }
+
+  if (mediaViewerVideoEl) {
+    mediaViewerVideoEl.hidden = true;
+    mediaViewerVideoEl.removeAttribute('src');
+  }
+
+  if (mediaViewerLoadingEl) {
+    mediaViewerLoadingEl.hidden = true;
+  }
+
+  if (mediaViewerFilenameEl) {
+    mediaViewerFilenameEl.textContent = '';
+  }
+
+  if (mediaViewerCounterEl) {
+    mediaViewerCounterEl.textContent = '';
+  }
+
+  if (mediaViewerOpenExternalButton) {
+    mediaViewerOpenExternalButton.disabled = true;
+  }
+
+  delete mediaViewerEl.dataset.active;
+  mediaViewerEl.setAttribute('aria-hidden', 'true');
+  mediaViewerEl.hidden = true;
+
+  if (document?.body) {
+    delete document.body.dataset.mediaViewerOpen;
+  }
+
+  mediaViewerState.isOpen = false;
+  mediaViewerState.index = -1;
+  mediaViewerState.currentFile = null;
+  mediaViewerState.sessionRequestId = 0;
+
+  updateMediaViewerNavigation(0);
+}
+
+function stopMediaViewerVideo() {
+  if (!mediaViewerVideoEl) {
+    return;
+  }
+
+  try {
+    mediaViewerVideoEl.pause();
+  } catch (error) {
+    // 忽略无法暂停视频的情况，以免影响关闭流程。
+  }
+  mediaViewerVideoEl.removeAttribute('src');
+  mediaViewerVideoEl.load?.();
+}
+
+function fetchNextMediaChunk(session) {
+  if (!session) {
+    return Promise.resolve();
+  }
+  if (session.loadingPromise) {
+    return session.loadingPromise;
+  }
+  return Promise.resolve();
+}
+
+function handleMediaViewerKeydown(event) {
+  if (!mediaViewerState.isOpen) {
+    return;
+  }
+
+  if (event.key === 'Escape') {
+    event.preventDefault();
+    closeMediaViewer();
+    return;
+  }
+
+  if (event.key === 'ArrowLeft') {
+    event.preventDefault();
+    stepMediaViewer(-1);
+    return;
+  }
+
+  if (event.key === 'ArrowRight') {
+    event.preventDefault();
+    stepMediaViewer(1);
   }
 }
 
@@ -1435,12 +1929,38 @@ function compareStarPriority(a, b) {
   return aStar ? -1 : 1;
 }
 
-function createMediaCard(file, signal) {
+function createMediaCard(file, signal, index) {
   const card = document.createElement('article');
   card.className = 'media-card';
-  if (file?.path) {
-    card.addEventListener('click', () => mediaApi?.openFile?.(file.path));
+
+  if (typeof index === 'number' && Number.isFinite(index)) {
+    card.dataset.index = String(index);
   }
+
+  card.tabIndex = 0;
+  card.setAttribute('role', 'button');
+
+  const activate = (event) => {
+    if (typeof index !== 'number' || !Number.isFinite(index)) {
+      return;
+    }
+
+    if (event instanceof KeyboardEvent) {
+      if (event.key !== 'Enter' && event.key !== ' ') {
+        return;
+      }
+      if (event.repeat) {
+        event.preventDefault();
+        return;
+      }
+      event.preventDefault();
+    }
+
+    openMediaViewerAtIndex(index);
+  };
+
+  card.addEventListener('click', activate);
+  card.addEventListener('keydown', activate);
 
   const resolvedUrl = file?.fileUrl || (file?.path ? `file://${encodeURI(file.path)}` : '');
 

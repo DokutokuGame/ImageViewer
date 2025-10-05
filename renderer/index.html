@@ -66,6 +66,82 @@
         </div>
       </section>
     </main>
+    <div id="media-viewer" class="media-viewer" hidden aria-hidden="true">
+      <div id="media-viewer-backdrop" class="media-viewer__backdrop"></div>
+      <div
+        class="media-viewer__dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="media-viewer-filename"
+      >
+        <header class="media-viewer__header">
+          <button
+            id="media-viewer-close"
+            type="button"
+            class="media-viewer__icon-button"
+            aria-label="关闭预览"
+          >
+            ×
+          </button>
+        </header>
+        <div class="media-viewer__content">
+          <button
+            id="media-viewer-prev"
+            type="button"
+            class="media-viewer__nav media-viewer__nav--prev"
+            aria-label="上一项"
+          >
+            ‹
+          </button>
+          <div id="media-viewer-stage" class="media-viewer__stage">
+            <div
+              id="media-viewer-loading"
+              class="media-viewer__loading"
+              hidden
+              aria-live="polite"
+            >
+              正在加载…
+            </div>
+            <img
+              id="media-viewer-image"
+              class="media-viewer__image"
+              alt=""
+              hidden
+            />
+            <video
+              id="media-viewer-video"
+              class="media-viewer__video"
+              controls
+              playsinline
+              hidden
+            ></video>
+          </div>
+          <button
+            id="media-viewer-next"
+            type="button"
+            class="media-viewer__nav media-viewer__nav--next"
+            aria-label="下一项"
+          >
+            ›
+          </button>
+        </div>
+        <footer class="media-viewer__footer">
+          <div class="media-viewer__caption">
+            <span id="media-viewer-filename" class="media-viewer__filename"></span>
+            <span id="media-viewer-counter" class="media-viewer__counter"></span>
+          </div>
+          <div class="media-viewer__actions">
+            <button
+              id="media-viewer-open-external"
+              type="button"
+              class="media-viewer__button"
+            >
+              在系统中打开
+            </button>
+          </div>
+        </footer>
+      </div>
+    </div>
     <script src="renderer.js" type="module"></script>
   </body>
 </html>
