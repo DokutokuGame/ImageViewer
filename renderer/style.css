@@ -736,6 +736,129 @@ canvas.media-thumb[data-error] {
   color: #7f56d9;
 }
 
+.media-viewer {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 17, 23, 0.9);
+  backdrop-filter: blur(8px);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1rem;
+  padding: 2rem;
+  z-index: 1000;
+}
+
+.media-viewer[hidden] {
+  display: none;
+}
+
+.media-viewer-content {
+  display: grid;
+  grid-template-columns: auto minmax(0, 80vw) auto;
+  align-items: center;
+  gap: 1rem;
+  width: 100%;
+  max-width: 1200px;
+}
+
+.media-viewer-figure {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.media-viewer-image {
+  max-width: 80vw;
+  max-height: 70vh;
+  width: auto;
+  height: auto;
+  border-radius: 12px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.4);
+}
+
+.media-viewer-caption {
+  color: #f0f6fc;
+  font-size: 0.95rem;
+  text-align: center;
+  word-break: break-all;
+}
+
+.media-viewer-nav {
+  width: 3rem;
+  height: 3rem;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f0f6fc;
+  font-size: 1.75rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background 0.2s ease;
+}
+
+.media-viewer-nav:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.media-viewer-nav:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.media-viewer-close {
+  position: absolute;
+  top: 1.5rem;
+  right: 1.5rem;
+  width: 2.5rem;
+  height: 2.5rem;
+  border-radius: 999px;
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: #f0f6fc;
+  font-size: 1.5rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 0.2s ease;
+}
+
+.media-viewer-close:hover {
+  background: rgba(255, 255, 255, 0.2);
+}
+
+.media-viewer-toolbar {
+  display: flex;
+  gap: 0.75rem;
+}
+
+.media-viewer-open {
+  border: none;
+  border-radius: 999px;
+  padding: 0.6rem 1.2rem;
+  background: var(--accent-color);
+  color: var(--accent-color-contrast);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: filter 0.2s ease;
+}
+
+.media-viewer-open:hover {
+  filter: brightness(1.1);
+}
+
+.media-viewer-open:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  filter: none;
+}
+
 @keyframes media-thumb-loading {
   0% {
     background-position: 200% 0;
