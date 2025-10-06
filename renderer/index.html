@@ -66,6 +66,57 @@
         </div>
       </section>
     </main>
+    <div
+      id="media-viewer"
+      class="media-viewer"
+      hidden
+      role="dialog"
+      aria-modal="true"
+      aria-hidden="true"
+    >
+      <button
+        id="media-viewer-close"
+        class="media-viewer-close"
+        type="button"
+        aria-label="关闭预览"
+      >
+        ×
+      </button>
+      <div class="media-viewer-content">
+        <button
+          id="media-viewer-prev"
+          class="media-viewer-nav media-viewer-prev"
+          type="button"
+          aria-label="上一张"
+          disabled
+        >
+          ‹
+        </button>
+        <figure class="media-viewer-figure">
+          <img id="media-viewer-image" alt="" class="media-viewer-image" />
+          <figcaption id="media-viewer-caption" class="media-viewer-caption"></figcaption>
+        </figure>
+        <button
+          id="media-viewer-next"
+          class="media-viewer-nav media-viewer-next"
+          type="button"
+          aria-label="下一张"
+          disabled
+        >
+          ›
+        </button>
+      </div>
+      <div class="media-viewer-toolbar">
+        <button
+          id="media-viewer-open"
+          type="button"
+          class="media-viewer-open"
+          disabled
+        >
+          在系统照片中打开
+        </button>
+      </div>
+    </div>
     <script src="renderer.js" type="module"></script>
   </body>
 </html>
