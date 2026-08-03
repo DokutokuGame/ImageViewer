@@ -23,11 +23,13 @@ ImageViewer 是一个**早期开发阶段**的本地桌面媒体浏览器：选�
 git clone <仓库地址>
 cd ImageViewer
 npm ci
+python -m pip install -e '.[dev]'
 npm run check:env
 npm run dev
 ```
 
-所有命令都从仓库根目录运行：`npm run dev` 用于开发与首次启动，`npm test`
+`npm test` 和 `npm run build` 会运行 Python 测试，因此全新 clone 必须先执行上述
+Python 开发依赖安装命令。所有命令都从仓库根目录运行：`npm run dev` 用于开发与首次启动，`npm test`
 运行 Node 和 Python 测试，`npm run build` 依次执行环境检查、静态检查、测试和
 `npm pack --dry-run`（只验证包内容，不生成安装包）。`npm start` 是 `npm run dev`
 的兼容别名。版本不受支持时，环境检查会直接给出可安装的版本范围。
