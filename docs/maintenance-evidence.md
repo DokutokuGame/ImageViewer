@@ -9,7 +9,6 @@
 
 | 条件 | 状态 | 可核验证据 | 结论 |
 | --- | --- | --- | --- |
-
 | 许可证已确认 | 满足 | [MIT License](../LICENSE)、[许可证分析](license-analysis.md)、[README 许可证说明](../README.md#许可证) | 唯一版权所有者已书面确认个人权属与 MIT 授权，元数据已同步。 |
 | 正式 Release 可下载 | 未满足 | [GitHub Releases](https://github.com/DokutokuGame/ImageViewer/releases)、[v0.1.0 候选说明](releases/v0.1.0.md) | `v0.1.0` 仍是候选版本；工作流 artifact 不是正式 Release。 |
 | CI 稳定 | 暂缺 | [Actions](https://github.com/DokutokuGame/ImageViewer/actions)、[Node 工作流](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml)、[Python 工作流](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml)、[仓库检查](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml) | 已配置工作流，但尚未记录连续成功观察窗口，不能称为稳定。 |
@@ -65,8 +64,7 @@ Codex 参与不表述为“自动维护”。每条记录必须同时包含具�
 
 ## 证据维护清单
 
-对外说明中的每项主张必须指向以下真实页面，不允许只链接本汇总记录：
-
+对外说明中的每项主张必须指向以下真实页面，不允许只链接本汇总记录。证据包括：
 
 1. [MIT License](../LICENSE) 提交和[依赖许可证复核记录](license-analysis.md)；
 2. 首个正式 [Release](https://github.com/DokutokuGame/ImageViewer/releases) 及可下载 asset、校验值；
