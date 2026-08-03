@@ -8,6 +8,18 @@ $output = Join-Path $repository 'dist'
 $staging = Join-Path $output "ImageViewer-$version-win-$architecture"
 $electronDist = Join-Path $repository 'node_modules/electron/dist'
 
+function Get-Sha256([string] $path) {
+  $stream = [System.IO.File]::OpenRead($path)
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = $algorithm.ComputeHash($stream)
+    return ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
+
 if (-not (Test-Path (Join-Path $electronDist 'electron.exe'))) {
   throw 'Windows Electron runtime not found. Run npm ci in a clean Windows x64 checkout first.'
 }
@@ -33,7 +45,7 @@ Copy-Item (Join-Path $repository 'renderer') $application -Recurse
 
 $archive = "$staging.zip"
 Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $archive -CompressionLevel Optimal
-$hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+$hash = Get-Sha256 $archive
 "$hash  $(Split-Path $archive -Leaf)" | Set-Content "$archive.sha256" -Encoding ascii
 Write-Host "Created $archive"
 Write-Host "SHA-256: $hash"

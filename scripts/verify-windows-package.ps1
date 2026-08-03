@@ -6,12 +6,24 @@ $archive = Join-Path $repository "dist/ImageViewer-$($manifest.version)-win-x64.
 $checksumFile = "$archive.sha256"
 $installRoot = Join-Path $env:RUNNER_TEMP "ImageViewer-clean-$($manifest.version)"
 
+function Get-Sha256([string] $path) {
+  $stream = [System.IO.File]::OpenRead($path)
+  $algorithm = [System.Security.Cryptography.SHA256]::Create()
+  try {
+    $bytes = $algorithm.ComputeHash($stream)
+    return ([System.BitConverter]::ToString($bytes)).Replace('-', '').ToLowerInvariant()
+  } finally {
+    $algorithm.Dispose()
+    $stream.Dispose()
+  }
+}
+
 if (-not (Test-Path $archive) -or -not (Test-Path $checksumFile)) {
   throw 'Package or SHA-256 file not found. Run npm run build:windows first.'
 }
 
 $expected = ((Get-Content $checksumFile -Raw).Trim() -split '\s+')[0]
-$actual = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
+$actual = Get-Sha256 $archive
 if ($actual -ne $expected) { throw "SHA-256 mismatch: expected $expected, got $actual" }
 
 Remove-Item $installRoot -Recurse -Force -ErrorAction SilentlyContinue
