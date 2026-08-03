@@ -1,0 +1,51 @@
+name: Repository hygiene
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  repository-files:
+    name: JSON, Markdown, size and secret checks
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Check out full history
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0
+      - name: Set up Python 3.12.8
+        uses: actions/setup-python@42375524e23c412d93fb67b49958b491fce71c38 # v5.4.0
+        with:
+          python-version: 3.12.8
+          cache: pip
+          cache-dependency-path: pyproject.toml
+      - name: Set up Node.js 20.18.1
+        uses: actions/setup-node@1e60f620b9541d0b03bfb8dba2b5e2b2f9f6f3b0 # v4.0.3
+        with:
+          node-version: 20.18.1
+      - name: Validate tracked JSON files (repository root)
+        working-directory: .
+        run: git ls-files -z '*.json' | xargs -0 -n1 python -m json.tool >/dev/null
+      - name: Lint Markdown with markdownlint-cli2 0.17.2 (repository root)
+        working-directory: .
+        run: npm exec --yes --package=markdownlint-cli2@0.17.2 -- markdownlint-cli2 '**/*.md' '#node_modules' '#app/node_modules'
+      - name: Reject tracked files larger than 5 MiB (repository root)
+        working-directory: .
+        run: |
+          failed=0
+          while IFS= read -r -d '' file; do
+            if [ "$(stat -c %s "$file")" -gt 5242880 ]; then
+              printf 'Tracked file exceeds 5 MiB: %s\n' "$file"
+              failed=1
+            fi
+          done < <(git ls-files -z)
+          exit "$failed"
+      - name: Install detect-secrets 1.5.0
+        working-directory: .
+        run: python -m pip install --disable-pip-version-check detect-secrets==1.5.0
+      - name: Scan tracked files for common secrets (repository root)
+        working-directory: .
+        run: git ls-files -z | xargs -0 -r detect-secrets-hook

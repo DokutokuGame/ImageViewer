@@ -1,5 +1,9 @@
 # ImageViewer
 
+[![Python validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml)
+[![Node and Electron validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml)
+[![Repository hygiene](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml)
+
 ImageViewer 是一个**早期开发阶段**的本地桌面媒体浏览器：选择图片目录后，它会扫描叶子目录、分页展示缩略图，并提供应用内大图预览与前后导航。文件只在本机读取；当前项目尚未提供安装包、稳定性承诺或正式发布版本。
 
 > [!IMPORTANT]
@@ -48,6 +52,12 @@ source .venv/bin/activate
 python -m pip install -e '.[dev]'
 pytest
 ```
+
+## 持续集成
+
+GitHub Actions 固定使用 Python 3.12.8、Node.js 20.18.1，并在仓库根目录复现安装、测试、静态检查和 Electron 包内容验证。主要命令包括 `python -m pytest -ra`、`ruff check src`、`npm ci`、`node --check` 与 `npm pack --dry-run`；仓库卫生工作流还检查 JSON、Markdown、超过 5 MiB 的受版本控制文件和常见密钥。工作流只输出日志，不上传用户目录、数据库、媒体文件或其他 artifact。
+
+根目录 `package-lock.json` 只属于当前主应用。历史原型 `app/` 暂无自己的锁文件，因此 CI 不在该目录安装依赖，也不会向上查找并误用根锁文件；在原型归属确认并生成独立锁文件前，只对其自有 JavaScript 做语法检查。每个工作流步骤的名称均标注实际命令及工作目录，失败时可直接定位到对应验证。
 
 ## 反馈与贡献
 
