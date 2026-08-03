@@ -1,103 +1,68 @@
 # ImageViewer
 
-该仓库包含用于构建和维护超大本地媒体库索引的工具。索引数据存储在 SQLite 中，因此在后续启动 ImageViewer 界面时，无需每次都重新扫描文件系统，就能几乎即时打开拥有数百万条目的目录树。
+ImageViewer 是一个**早期开发阶段**的本地桌面媒体浏览器：选择图片目录后，它会扫描叶子目录、分页展示缩略图，并提供应用内大图预览与前后导航。文件只在本机读取；当前项目尚未提供安装包、稳定性承诺或正式发布版本。
 
-## 功能亮点
+> [!IMPORTANT]
+> **许可证状态：尚未授权公开使用。** 版权所有者还没有书面确认开源许可证，仓库中因此刻意不提供 `LICENSE`。在许可证落地前，默认版权规则适用；请勿将代码的可见性理解为复制、修改或再分发许可。候选许可证与依赖分析见 [许可证分析](docs/license-analysis.md)。
 
-- 使用高效的 `os.scandir` 原语的多线程目录爬虫。
-- 增量更新：已存在于索引中的条目会被复用，当文件消失时会被移除。
-- 可配置的批量大小，用于平衡内存占用与写入性能。
-- 提供命令行界面以构建和刷新索引。
-- 基于目录名称关键词的自动标签功能，便于进行语义分类。
-- 预置中文界面的菜单栏配置，方便前端直接加载使用。
-- Electron 图形界面完整中文化，提供目录选择、标签筛选与离线缓存能力。
+## 五分钟开始使用
 
-## 使用方法
+### 1. 准备环境
 
-推荐先创建虚拟环境（可选），并以开发模式安装项目及其依赖：
+- Node.js 18 或更高版本（建议使用当前 LTS）
+- npm
+- Electron 所需的桌面环境；Linux 还需要 GTK/ATK 等运行库
+
+### 2. 安装并启动
+
+```bash
+git clone <仓库地址>
+cd ImageViewer
+npm ci
+npm start
+```
+
+在窗口中选择一个本地媒体目录，然后：
+
+1. 从左侧选择扫描出的叶子目录；
+2. 在缩略图网格中滚动浏览，内容会分页加载；
+3. 点击图片进入应用内预览，使用前后按钮或键盘方向键导航；
+4. 使用“打开目录”等操作回到系统文件管理器。
+
+扫描大型目录可能需要一段时间。请先用已备份、非敏感的测试目录体验；本项目仍处早期阶段，尚未完成跨平台端到端验证。
+
+## 当前实现与仓库结构
+
+| 路径 | 状态 | 用途 |
+| --- | --- | --- |
+| `src/main/`、`renderer/` | **主实现** | Electron 主进程、目录扫描、偏好存储和渲染界面 |
+| `src/image_viewer/` | 实验性组件 | Python/SQLite 索引器与中文菜单模型，尚未接入主界面 |
+| `app/` | 历史原型 | 独立 Electron 原型，不是当前支持的启动入口 |
+| `tests/` | 部分覆盖 | 目前仅覆盖 Python 组件，Electron 尚缺自动化测试 |
+
+Python 实验组件可用下面的方式验证：
 
 ```bash
 python -m venv .venv
 source .venv/bin/activate
-pip install -e .[dev]
-```
-
-随后构建索引：
-
-```bash
-python -m image_viewer.indexer /path/to/your/library --database media_index.db --workers 8
-```
-
-后续运行时，仅扫描新增或发生变化的文件，因此指向同一目录即可快速刷新索引。
-
-使用 `--min-tag-frequency` 可以控制关键词至少在多少个目录名称中出现后才会升级为标签。例如，以下命令要求某个关键词至少在三个目录名称中出现一次，才会生成对应标签：
-
-```bash
-python -m image_viewer.indexer /path/to/your/library --min-tag-frequency 3
-```
-
-### 中文图形界面
-
-`app/` 目录包含已经翻译好的 Electron 前端。界面中所有标题、按钮、空状态提示与标签名称均为中文，可与上方的索引器配合使用：
-
-```bash
-cd app
-npm install
-npm start
-```
-
-界面功能简介：
-
-- **选择目录：** 点击右上角按钮调用系统对话框，新增的目录会在侧栏展示，并写入本地缓存。
-- **自动标签：** 当多个目录包含相同关键词时，会自动生成中文标签，点击即可筛选。
-- **离线模式：** 如果未启动 Electron 主进程提供的 IPC 接口，界面会使用浏览器的 LocalStorage 作为后备，仍可体验中文界面。
-
-### 菜单栏本地化
-
-`image_viewer.menu` 模块提供了 `build_default_menu()` 函数，可生成一份已经
-翻译成中文的菜单栏结构。前端（例如 Electron 或桌面应用）可以直接将其
-序列化为 JSON，填充到应用的菜单系统中：
-
-```python
-from image_viewer.menu import build_default_menu
-
-menu_definition = [item.to_dict() for item in build_default_menu()]
-# 将 menu_definition 传入前端或写入配置文件即可。所有菜单标题、命令名称
-# 与快捷键提示均已是中文描述。
-```
-
-### 以代码方式调用
-
-```python
-from image_viewer.indexer import DirectoryIndexer
-
-with DirectoryIndexer("/path/to/library", "media_index.db") as indexer:
-    indexer.build_index(max_workers=8, min_tag_frequency=2)
-    for entry in indexer.list_directory("season1"):
-        print(entry.path, entry.size)
-
-    for tag in indexer.list_tags():
-        print(tag.display_name, tag.match_count)
-
-    beach_folders = indexer.list_directories_by_tag("beach")
-    print("海滩主题目录:", [entry.path for entry in beach_folders])
-```
-
-## 目录分类规划与可行性分析
-
-自动标签系统会依据相似的目录名称对文件夹分组，从而可以通过诸如 `Vacation` 或 `Family` 的语义标签来浏览大型媒体库。该实现完全依赖 SQLite 索引中已存储的目录名称，因此即使面对数 TB 的资源集合，仍然十分轻量。
-
-- **分词策略：** 将目录名称拆分为字母和数字组成的 token，忽略标点符号。长度小于两个字符的 token 会被丢弃，以避免如 `S`、`X` 等缩写带来的噪声。
-- **共享关键词检测：** 只有当某个 token 至少出现在 `min_tag_frequency` 个不同目录中时，才会被提升为标签。该阈值既能避免一次性目录名称污染标签列表，又能凸显重复出现的主题。
-- **标签元数据：** 会同时存储规范化的 token 和便于阅读的展示字符串。标签与目录之间的关联被持久化，以便界面在筛选标签对应目录时能够即时返回结果。
-- **可行性：** 标签构建复用现有的目录索引，并在写入 SQLite 之前于内存中批处理完成。该流程的复杂度与目录数量（而非文件数量）成正比，且分词仅是针对每个目录名称执行一次正则表达式匹配，因此对索引流程影响极小。外键约束可以确保在更新或删除条目时，标签关联保持同步。
-
-该设计为未来的扩展留出了空间，例如按不同语言自定义分词器或允许用户定义同义词，而无需修改核心数据模型。
-
-## 测试
-
-运行自动化检查：
-
-```bash
+python -m pip install -e '.[dev]'
 pytest
 ```
+
+## 反馈与贡献
+
+- 遇到可复现的问题：使用 [Bug 报告](.github/ISSUE_TEMPLATE/bug_report.yml)。
+- 有功能构想：使用 [功能建议](.github/ISSUE_TEMPLATE/feature_request.yml)。
+- 怀疑存在安全问题：**不要创建公开 Issue**，请按 [安全政策](SECURITY.md) 私下报告。
+- 准备提交修改：先阅读 [贡献指南](CONTRIBUTING.md)、[行为准则](CODE_OF_CONDUCT.md) 和 [Roadmap](ROADMAP.md)，再按 [PR 模板](.github/pull_request_template.md) 自检。
+
+维护者会尽力回应，但在项目进入稳定阶段前不承诺响应时限、兼容性或发布节奏。
+
+## 项目状态
+
+- 成熟度：探索/原型阶段（`0.x`），接口、数据格式与产品方向均可能变化。
+- 发布：没有官方二进制安装包。
+- 测试：Python 单元测试可用；Electron 主要依赖语法与人工验证。
+- 计划：参见 [ROADMAP.md](ROADMAP.md)。
+- 变更：参见 [CHANGELOG.md](CHANGELOG.md)。
+- 许可证：等待所有者书面确认；当前**不是已授权的开源发布**。

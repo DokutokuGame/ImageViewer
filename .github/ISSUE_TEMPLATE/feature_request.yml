@@ -1,0 +1,38 @@
+name: 功能建议
+description: 描述用户场景和建议的改进
+title: "[Feature] "
+labels: ["enhancement", "triage"]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: 用户问题
+      description: 谁在什么场景遇到了什么问题？请避免只描述解决方案。
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: 建议方案
+      description: 描述交互、范围和一个最小可交付版本。
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: 替代方案
+      description: 目前如何绕过？考虑过哪些替代设计？
+  - type: textarea
+    id: impact
+    attributes:
+      label: 风险与影响
+      description: 隐私、安全、性能、兼容性、依赖或数据迁移影响。
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: 提交前检查
+      options:
+        - label: 我已搜索现有 Issue 和 Roadmap。
+          required: true
+        - label: 我没有在此 Issue 中附带私人媒体或敏感本地路径。
+          required: true
