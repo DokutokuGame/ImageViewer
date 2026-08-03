@@ -1,0 +1,5 @@
+blank_issues_enabled: false
+contact_links:
+  - name: 安全漏洞
+    url: https://github.com/DokutokuGame/ImageViewer/security
+    about: 请先阅读 SECURITY.md，并使用私密漏洞报告；不要公开漏洞细节。
