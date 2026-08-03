@@ -9,6 +9,12 @@ const {
 } = require('./preferences');
 
 let mainWindow;
+const demoMode = process.env.IMAGEVIEWER_DEMO === '1';
+const DEMO_LEAVES = [
+  { path: 'demo://旅行/海边', displayPath: '旅行/海边', mediaFileCount: 12 },
+  { path: 'demo://旅行/城市', displayPath: '旅行/城市', mediaFileCount: 8 },
+  { path: 'demo://家庭/周末', displayPath: '家庭/周末', mediaFileCount: 5 },
+];
 
 async function createWindow() {
   mainWindow = new BrowserWindow({
@@ -23,9 +29,18 @@ async function createWindow() {
 }
 
 app.whenReady().then(async () => {
-  await initPreferences(app);
-
-  createWindow();
+  try {
+    await initPreferences(app);
+    await createWindow();
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('Electron 启动失败', error);
+    dialog.showErrorBox(
+      'ImageViewer 启动失败',
+      `${message}\n\n请确认用户数据目录可写，并运行 \`npm run check:env\` 检查环境。`,
+    );
+    app.quit();
+  }
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) {
@@ -63,18 +78,30 @@ ipcMain.handle('select-root', async (event) => {
   }
 
   const root = result.filePaths[0];
-  const leaves = await collectLeafDirectories(root);
-  const tags = await recordRootTag(root);
-  return { root, leaves, tags };
+  try {
+    const leaves = await collectLeafDirectories(root);
+    const tags = await recordRootTag(root);
+    return { root, leaves, tags };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
 });
+
+ipcMain.handle('get-demo-data', () => demoMode ? {
+  root: '演示资料库（仅虚拟元数据）',
+  leaves: DEMO_LEAVES,
+} : null);
 
 ipcMain.handle('scan-directory', async (_event, rootPath) => {
   if (!rootPath) {
     return [];
   }
 
-  const leaves = await collectLeafDirectories(rootPath);
-  return leaves;
+  try {
+    return { leaves: await collectLeafDirectories(rootPath) };
+  } catch (error) {
+    return { leaves: [], error: error instanceof Error ? error.message : String(error) };
+  }
 });
 
 ipcMain.handle('list-media-files', async (_event, directoryPath, options = {}) => {
@@ -87,6 +114,11 @@ ipcMain.handle('list-media-files', async (_event, directoryPath, options = {}) =
       hasMore: false,
       error: 'Missing directory path',
     };
+  }
+
+  if (demoMode && directoryPath.startsWith('demo://')) {
+    const leaf = DEMO_LEAVES.find((item) => item.path === directoryPath);
+    return { files: [], total: leaf?.mediaFileCount || 0, offset: 0, nextOffset: 0, hasMore: false };
   }
 
   try {

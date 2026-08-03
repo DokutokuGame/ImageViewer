@@ -19,6 +19,7 @@ const mediaViewerPrevButton = document.getElementById('media-viewer-prev');
 const mediaViewerNextButton = document.getElementById('media-viewer-next');
 const mediaViewerOpenButton = document.getElementById('media-viewer-open');
 const mediaApi = window.mediaApi;
+const appMessageEl = document.getElementById('app-message');
 
 const MIN_TAG_OCCURRENCE = 2;
 const EXCLUDED_TAGS_STORAGE_KEY = 'media-excluded-tags';
@@ -75,6 +76,12 @@ if (lazyThumbnailLoader?.reset) {
 }
 
 render();
+
+mediaApi?.getDemoData?.().then((demo) => {
+  if (!demo) return;
+  showMessage('演示模式仅展示虚拟目录元数据，不会读取或写入媒体文件。', false);
+  updateState({ ...demo, selectedPath: demo.leaves[0]?.path ?? null });
+});
 
 if (openDirectoryButton) {
   openDirectoryButton.addEventListener('click', () => {
@@ -144,6 +151,11 @@ if (!mediaApi?.selectRoot) {
     if (!result) {
       return;
     }
+    if (result.error) {
+      showMessage(result.error);
+      return;
+    }
+    showMessage('');
     updateState({
       root: result.root,
       leaves: result.leaves,
@@ -152,6 +164,13 @@ if (!mediaApi?.selectRoot) {
       activeTag: null,
     });
   });
+}
+
+function showMessage(message, isError = true) {
+  if (!appMessageEl) return;
+  appMessageEl.textContent = message;
+  appMessageEl.hidden = !message;
+  appMessageEl.style.color = isError ? '' : '#1a7f37';
 }
 
 function updateState(patch) {
@@ -773,7 +792,14 @@ async function handleSavedTagSelection(tag) {
   showMediaPendingProgress('正在加载已保存的目录…');
 
   try {
-    const leaves = await mediaApi.scanDirectory(tag.path);
+    const result = await mediaApi.scanDirectory(tag.path);
+    if (result?.error) {
+      showMessage(result.error);
+      resetMediaProgress();
+      return;
+    }
+    const leaves = result?.leaves || [];
+    showMessage('');
     updateState({
       root: tag.path,
       leaves,
