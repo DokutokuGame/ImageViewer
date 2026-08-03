@@ -25,12 +25,14 @@ jobs:
           cache-dependency-path: package-lock.json
       - name: Install root lock file (repository root)
         run: npm ci
-      - name: Check root JavaScript syntax (repository root)
-        run: find src/main renderer -type f -name '*.js' -print0 | xargs -0 -n1 node --check
+      - name: Run unified static checks (repository root)
+        run: npm run check
+      - name: Run unified tests (repository root)
+        run: npm test
       - name: Validate Electron dependency and entry point (repository root)
         run: npm ls electron --depth=0 && node --check "$(node -p "require('./package.json').main")" && node -p "'Electron ' + require('electron/package.json').version"
-      - name: Validate package contents without creating an artifact (repository root)
-        run: npm pack --dry-run
+      - name: Run unified build validation without an artifact (repository root)
+        run: npm run build
 
   historical-app:
     name: Historical app / manifest isolation

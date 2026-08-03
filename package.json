@@ -5,7 +5,17 @@
   "main": "src/main/main.js",
   "private": true,
   "scripts": {
-    "start": "electron ."
+    "check:env": "node scripts/check-environment.js",
+    "dev": "npm run check:env && electron .",
+    "start": "npm run dev",
+    "demo": "npm run check:env && node scripts/start-demo.js",
+    "test": "node --test tests-js && python -m pytest -ra",
+    "check": "npm run check:env && find src/main renderer scripts tests-js -type f -name '*.js' -print0 | xargs -0 -n1 node --check",
+    "build": "npm run check && npm test && npm pack --dry-run"
+  },
+  "engines": {
+    "node": ">=20.18.1 <23",
+    "npm": ">=10"
   },
   "dependencies": {
     "@primer/css": "17.0.1"

@@ -9,4 +9,5 @@ contextBridge.exposeInMainWorld('mediaApi', {
   openDirectory: (directoryPath) => ipcRenderer.invoke('open-directory', directoryPath),
   getRootTags: () => ipcRenderer.invoke('get-root-tags'),
   removeRootTag: (rootPath) => ipcRenderer.invoke('remove-root-tag', rootPath),
+  getDemoData: () => ipcRenderer.invoke('get-demo-data'),
 });

@@ -1,6 +1,7 @@
 const fs = require('fs').promises;
 const path = require('path');
 const { pathToFileURL } = require('url');
+const { actionableFileError } = require('./errors');
 
 const IMAGE_EXTENSIONS = new Set([
   '.jpg',
@@ -48,8 +49,7 @@ async function walkDirectory(currentPath, rootPath) {
   try {
     entries = await fs.readdir(currentPath, { withFileTypes: true });
   } catch (error) {
-    console.warn('Failed to read directory', currentPath, error);
-    return [];
+    throw new Error(actionableFileError(error, currentPath));
   }
 
   const files = [];
@@ -140,7 +140,7 @@ async function listMediaFiles(directoryPath, options = {}) {
       offset: 0,
       nextOffset: 0,
       hasMore: false,
-      error: error instanceof Error ? error.message : String(error),
+      error: actionableFileError(error, directoryPath),
     };
   }
 

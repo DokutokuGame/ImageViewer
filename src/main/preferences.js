@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const { actionableFileError } = require('./errors');
 
 let storePath;
 let state = { rootTags: [] };
@@ -37,11 +38,16 @@ async function initPreferences(app) {
   storePath = path.join(app.getPath('userData'), 'preferences.json');
 
   try {
+    await fs.promises.mkdir(path.dirname(storePath), { recursive: true });
+    await fs.promises.access(path.dirname(storePath), fs.constants.W_OK);
     const raw = await fs.promises.readFile(storePath, 'utf8');
     state = sanitiseState(JSON.parse(raw));
   } catch (error) {
     state = { rootTags: [] };
     if (error.code !== 'ENOENT') {
+      if (['EACCES', 'EPERM', 'EROFS'].includes(error.code)) {
+        throw new Error(actionableFileError(error, storePath, '写入偏好数据库'));
+      }
       console.warn('Failed to read preferences file', error);
     }
   }
@@ -60,7 +66,11 @@ async function persist() {
   const directory = path.dirname(storePath);
   await fs.promises.mkdir(directory, { recursive: true });
   const payload = JSON.stringify(state, null, 2);
-  await fs.promises.writeFile(storePath, payload, 'utf8');
+  try {
+    await fs.promises.writeFile(storePath, payload, 'utf8');
+  } catch (error) {
+    throw new Error(actionableFileError(error, storePath, '写入偏好数据库'));
+  }
 }
 
 function getRootTags() {

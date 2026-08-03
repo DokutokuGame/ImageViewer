@@ -872,3 +872,10 @@ canvas.media-thumb[data-error] {
   color: #57606a;
   font-size: 0.9rem;
 }
+.app-message {
+  margin: 0;
+  padding: 0.75rem 1rem;
+  color: #9a2c2c;
+  background: #ffebe9;
+  border-bottom: 1px solid #ff8182;
+}
