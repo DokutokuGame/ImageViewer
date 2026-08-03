@@ -16,3 +16,22 @@ test('Windows release scripts avoid host-dependent PowerShell features', () => {
     assert.match(contents.toString('utf8'), /System\.Security\.Cryptography\.SHA256/);
   }
 });
+
+test('Windows package includes and verifies project and third-party notices', () => {
+  const buildScript = fs.readFileSync(path.resolve('scripts/build-windows.ps1'), 'utf8');
+  const verifyScript = fs.readFileSync(path.resolve('scripts/verify-windows-package.ps1'), 'utf8');
+
+  assert.match(buildScript, /LICENSE\.ImageViewer\.txt/);
+  assert.match(buildScript, /THIRD_PARTY_NOTICES\.txt/);
+  assert.match(verifyScript, /LICENSES\.chromium\.html/);
+  assert.match(verifyScript, /LICENSE\.ImageViewer\.txt/);
+  assert.match(verifyScript, /THIRD_PARTY_NOTICES\.txt/);
+});
+
+test('BrowserWindow keeps renderer privileges isolated', () => {
+  const mainProcess = fs.readFileSync(path.resolve('src/main/main.js'), 'utf8');
+
+  assert.match(mainProcess, /contextIsolation:\s*true/);
+  assert.match(mainProcess, /nodeIntegration:\s*false/);
+  assert.match(mainProcess, /sandbox:\s*true/);
+});

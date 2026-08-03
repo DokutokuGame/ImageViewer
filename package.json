@@ -9,7 +9,7 @@
     "dev": "npm run check:env && electron .",
     "start": "npm run dev",
     "demo": "npm run check:env && node scripts/start-demo.js",
-    "test": "node --test tests-js && python -m pytest -ra",
+    "test": "node --test && python -m pytest -ra",
     "check": "npm run check:env && find src/main renderer scripts tests-js -type f -name '*.js' -print0 | xargs -0 -n1 node --check",
     "build": "npm run check && npm test && npm pack --dry-run",
     "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
@@ -19,11 +19,8 @@
     "node": ">=20.18.1 <23",
     "npm": ">=10"
   },
-  "dependencies": {
-    "@primer/css": "17.0.1"
-  },
   "devDependencies": {
-    "electron": "26.2.4"
+    "electron": "41.7.1"
   },
   "license": "MIT"
 }

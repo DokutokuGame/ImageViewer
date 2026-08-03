@@ -28,6 +28,8 @@ Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
 New-Item $staging -ItemType Directory -Force | Out-Null
 Copy-Item (Join-Path $electronDist '*') $staging -Recurse -Force
 Rename-Item (Join-Path $staging 'electron.exe') 'ImageViewer.exe'
+Copy-Item (Join-Path $repository 'LICENSE') (Join-Path $staging 'LICENSE.ImageViewer.txt')
+Copy-Item (Join-Path $repository 'THIRD_PARTY_NOTICES.txt') $staging
 
 $resources = Join-Path $staging 'resources'
 Remove-Item (Join-Path $resources 'default_app.asar') -Force -ErrorAction SilentlyContinue

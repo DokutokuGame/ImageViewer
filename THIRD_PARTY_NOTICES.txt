@@ -1,0 +1,15 @@
+ImageViewer third-party notices
+================================
+
+This Windows portable distribution contains Electron 41.7.1 and the Chromium
+components shipped with that Electron runtime.
+
+Electron is licensed under the MIT License. Its complete license text is
+included at the package root as LICENSE.
+
+Chromium and its bundled third-party components retain their respective
+licenses. Their complete notices are included at the package root as
+LICENSES.chromium.html.
+
+ImageViewer's own MIT License is included separately as
+LICENSE.ImageViewer.txt. It does not replace or modify any third-party license.

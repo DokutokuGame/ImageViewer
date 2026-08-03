@@ -10,7 +10,7 @@
     "lint": "eslint --ext .js,.ts src"
   },
   "devDependencies": {
-    "electron": "^28.2.0",
+    "electron": "^41.7.1",
     "eslint": "^8.57.0"
   },
   "dependencies": {
