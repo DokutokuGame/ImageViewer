@@ -23,7 +23,7 @@ jobs:
           cache: pip
           cache-dependency-path: pyproject.toml
       - name: Set up Node.js 20.18.1
-        uses: actions/setup-node@1e60f620b9541d0b03bfb8dba2b5e2b2f9f6f3b0 # v4.0.3
+        uses: actions/setup-node@v4
         with:
           node-version: 20.18.1
       - name: Validate tracked JSON files (repository root)
