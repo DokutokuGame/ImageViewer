@@ -9,7 +9,7 @@ $staging = Join-Path $output "ImageViewer-$version-win-$architecture"
 $electronDist = Join-Path $repository 'node_modules/electron/dist'
 
 if (-not (Test-Path (Join-Path $electronDist 'electron.exe'))) {
-  throw '未找到 Windows Electron 运行时。请在 Windows x64 干净检出中先运行 npm ci。'
+  throw 'Windows Electron runtime not found. Run npm ci in a clean Windows x64 checkout first.'
 }
 
 Remove-Item $output -Recurse -Force -ErrorAction SilentlyContinue
@@ -35,5 +35,5 @@ $archive = "$staging.zip"
 Compress-Archive -Path (Join-Path $staging '*') -DestinationPath $archive -CompressionLevel Optimal
 $hash = (Get-FileHash $archive -Algorithm SHA256).Hash.ToLowerInvariant()
 "$hash  $(Split-Path $archive -Leaf)" | Set-Content "$archive.sha256" -Encoding ascii
-Write-Host "已生成 $archive"
+Write-Host "Created $archive"
 Write-Host "SHA-256: $hash"
