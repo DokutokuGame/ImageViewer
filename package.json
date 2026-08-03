@@ -11,7 +11,9 @@
     "demo": "npm run check:env && node scripts/start-demo.js",
     "test": "node --test tests-js && python -m pytest -ra",
     "check": "npm run check:env && find src/main renderer scripts tests-js -type f -name '*.js' -print0 | xargs -0 -n1 node --check",
-    "build": "npm run check && npm test && npm pack --dry-run"
+    "build": "npm run check && npm test && npm pack --dry-run",
+    "build:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/build-windows.ps1",
+    "verify:windows": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/verify-windows-package.ps1"
   },
   "engines": {
     "node": ">=20.18.1 <23",
