@@ -114,6 +114,10 @@ GitHub Actions 固定使用 Python 3.12.8、Node.js 20.18.1，并在仓库根目
 [维护与发布证据记录](docs/maintenance-evidence.md)。该记录区分候选构建与正式发布，
 并对无法从 GitHub 或 Release 页面核验的数据明确标记为“暂缺”。
 
+发布状态、公开数据口径、人工复核责任与正式 Release 后的周报规则见
+[维护与发布证据记录](docs/maintenance-evidence.md)。该记录区分候选构建与正式发布，
+并对无法从 GitHub 或 Release 页面核验的数据明确标记为“暂缺”。
+
 ## v0.1.0 发布条件评审
 
 周末评审使用以下阻断清单；任意一项未确认都**不得进入正式发布**：
