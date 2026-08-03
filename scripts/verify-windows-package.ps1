@@ -31,6 +31,17 @@ New-Item $installRoot -ItemType Directory | Out-Null
 Expand-Archive $archive -DestinationPath $installRoot
 $executable = Get-ChildItem $installRoot -Filter ImageViewer.exe -Recurse | Select-Object -First 1
 if (-not $executable) { throw 'ImageViewer.exe was not found after clean extraction.' }
+$requiredNotices = @(
+  'LICENSE',
+  'LICENSE.ImageViewer.txt',
+  'LICENSES.chromium.html',
+  'THIRD_PARTY_NOTICES.txt'
+)
+foreach ($notice in $requiredNotices) {
+  if (-not (Test-Path (Join-Path $installRoot $notice))) {
+    throw "Required license or notice file was not found: $notice"
+  }
+}
 $installedManifest = Get-ChildItem $installRoot -Filter package.json -Recurse |
   Where-Object { $_.FullName -match 'resources\\app\\package.json$' } | Select-Object -First 1
 if (-not $installedManifest) { throw 'Application manifest was not found in the extracted package.' }

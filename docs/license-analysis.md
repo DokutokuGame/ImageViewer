@@ -32,10 +32,9 @@ CLA 或项目许可证下的 inbound=outbound 规则，并继续记录新代码�
 
 | 生态/用途 | 直接依赖 | 声明版本 | 常见许可证 | 备注 |
 | --- | --- | --- | --- | --- |
-| 根 Electron 运行时样式 | `@primer/css` | `17.0.1`（锁定） | MIT | CSS 会进入应用；发布时需保留其许可证通知 |
-| 根 Electron 开发/运行壳 | `electron` | `26.2.4`（锁定） | MIT | Electron 分发物还包含 Chromium 等第三方组件及 notices，打包时不能只看 npm 顶层字段 |
+| 根 Electron 开发/运行壳 | `electron` | `41.7.1`（锁定） | MIT | Electron 分发物还包含 Chromium 等第三方组件及 notices，发布包同时携带项目许可证与第三方通知索引 |
 | `app/` 原型样式 | `@primer/css` | `^17.0.1` | MIT | `app/` 没有提交 lockfile，解析结果不可复现；当前不作为支持入口 |
-| `app/` 开发依赖 | `electron`、`eslint` | `^28.2.0`、`^8.57.0` | MIT | 同上；若继续分发应先锁定与审计 |
+| `app/` 开发依赖 | `electron`、`eslint` | `^41.7.1`、`^8.57.0` | MIT | 同上；若继续分发应先锁定与审计 |
 | Python 运行时 | 无 | — | — | `pyproject.toml` 未声明运行时第三方包 |
 | Python 开发/测试 | `pytest` | `>=7` | MIT | 未锁定；其传递依赖由安装环境决定，不进入应用运行时但会影响开发/CI 合规清单 |
 
