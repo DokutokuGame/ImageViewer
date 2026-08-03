@@ -1,0 +1,6 @@
+config:
+  # Chinese prose and tables are intentionally not hard-wrapped.
+  MD013: false
+  # Several existing documents use repeated section labels in templates.
+  MD024:
+    siblings_only: true
