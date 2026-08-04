@@ -31,7 +31,7 @@ jobs:
         run: git ls-files -z '*.json' | xargs -0 -n1 python -m json.tool >/dev/null
       - name: Lint Markdown with markdownlint-cli2 0.17.2 (repository root)
         working-directory: .
-        run: npm exec --yes --package=markdownlint-cli2@0.17.2 -- markdownlint-cli2 '**/*.md' '#node_modules' '#app/node_modules'
+        run: npm exec --yes --package=markdownlint-cli2@0.17.2 -- markdownlint-cli2 '**/*.md' '#.git' '#node_modules' '#app/node_modules'
       - name: Reject tracked files larger than 5 MiB (repository root)
         working-directory: .
         run: |

@@ -1,41 +1,53 @@
 # ImageViewer
 
-[English](README.en.md) | **简体中文**
+**English** | [简体中文](README.zh-CN.md)
 
 [![Python validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml)
 [![Node and Electron validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml)
 [![Repository hygiene](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml)
 
-ImageViewer 是一个**早期开发阶段**的本地桌面媒体浏览器：选择图片目录后，它会扫描叶子目录、分页展示缩略图，并提供应用内大图预览与前后导航。文件只在本机读取；当前项目已发布 Windows x64 预览便携包，但尚不提供稳定性、兼容性或响应时限承诺。
+ImageViewer is an **early-stage** local desktop media browser. After you select an
+image directory, it scans leaf directories, displays paginated thumbnails, and
+provides an in-app full-size preview with previous and next navigation. Files are
+read only from your local machine. A Windows x64 preview portable package is
+available, but the project does not yet guarantee stability, compatibility, or
+response times.
 
-## 下载
+## Download
 
-- [ImageViewer v0.1.0](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)：Windows x64 免安装便携包；
-- 下载 ZIP 和同名 `.sha256` 文件后，按 [v0.1.0 发布说明](docs/releases/v0.1.0.md)
-  核对校验值。
+- [ImageViewer v0.1.0](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0):
+  a portable, installation-free package for Windows x64.
+- After downloading the ZIP archive and its matching `.sha256` file, follow the
+  [v0.1.0 release notes](docs/releases/v0.1.0.md) to verify the checksum.
 
-程序尚未签名，Windows SmartScreen 可能显示未知发布者提示。macOS 和其他 Windows
-架构尚未提供下载。
+The application is not code-signed, so Windows SmartScreen may display an
+unknown-publisher warning. Downloads for macOS and other Windows architectures
+are not currently available.
 
-## 许可证
+## License
 
-版权所有者已确认仓库中的原创代码与文档均为其个人贡献，并以
-[MIT License](LICENSE) 授权。该授权也涵盖 `app/` 历史原型；`app/` 继续随源码发布，
-但仍不是当前支持的应用入口。第三方依赖继续适用各自的许可证，相关分析见
-[许可证与代码来源分析](docs/license-analysis.md)。
+The copyright owner has confirmed that the original code and documentation in
+this repository are their personal contributions and are licensed under the
+[MIT License](LICENSE). This license also covers the historical prototype in
+`app/`. The prototype remains available as source code, but it is not the
+currently supported application entry point. Third-party dependencies remain
+subject to their respective licenses; see the
+[license and code provenance analysis](docs/license-analysis.md) for details.
 
-## 快速开始（统一入口）
+## Quick Start (Unified Entry Point)
 
-### 1. 准备环境
+### 1. Prerequisites
 
-- Node.js 20.18.1 至 22.x（建议 Node.js 20 LTS）与 npm 10 或更高版本
-- Python 3.10 至 3.13（测试入口同时验证实验性 Python 组件）
-- Electron 所需的桌面环境；Linux 还需要 GTK/ATK 等运行库
+- Node.js 20.18.1 through 22.x (Node.js 20 LTS recommended) and npm 10 or later
+- Python 3.10 through 3.13 (the test command also validates experimental Python
+  components)
+- A desktop environment that meets Electron's requirements; Linux additionally
+  requires GTK/ATK and related runtime libraries
 
-### 2. 安装并启动
+### 2. Install and Run
 
 ```bash
-git clone <仓库地址>
+git clone <repository-url>
 cd ImageViewer
 npm ci
 python -m pip install -e '.[dev]'
@@ -43,37 +55,48 @@ npm run check:env
 npm run dev
 ```
 
-`npm test` 和 `npm run build` 会运行 Python 测试，因此全新 clone 必须先执行上述
-Python 开发依赖安装命令。所有命令都从仓库根目录运行：`npm run dev` 用于开发与首次启动，`npm test`
-运行 Node 和 Python 测试，`npm run build` 依次执行环境检查、静态检查、测试和
-`npm pack --dry-run`（只验证包内容，不生成安装包）。`npm start` 是 `npm run dev`
-的兼容别名。版本不受支持时，环境检查会直接给出可安装的版本范围。
+Because `npm test` and `npm run build` run the Python tests, you must install the
+Python development dependencies shown above after a fresh clone. Run all
+commands from the repository root. Use `npm run dev` for development and the
+first launch; `npm test` runs the Node.js and Python test suites; and
+`npm run build` runs the environment check, static checks, tests, and
+`npm pack --dry-run` in sequence. The build command validates package contents
+without producing an installer. `npm start` is a compatibility alias for
+`npm run dev`. The environment check reports the supported version range when
+an installed version is unsupported.
 
-不想选择真实媒体时，可运行 `npm run demo`。演示模式只在内存中提供虚拟目录名和
-数量，不包含、不生成也不读取媒体文件。程序的偏好文件保存在 Electron 用户数据目录；
-目录无效、读取权限不足或该目录不可写时，界面/启动对话框会说明出错路径和可采取的
-操作。若 Electron 无法启动，请先运行 `npm run check:env`，再确认当前会话具有图形
-桌面以及 Electron 所需系统库。
+To try the application without selecting real media, run `npm run demo`. Demo
+mode provides virtual directory names and item counts in memory; it does not
+contain, generate, or read media files. Application preferences are stored in
+Electron's user data directory. If a selected directory is invalid, cannot be
+read, or the preferences directory cannot be written, the interface or startup
+dialog identifies the affected path and suggests corrective action. If Electron
+does not start, first run `npm run check:env`, then confirm that the current
+session has a graphical desktop and the system libraries required by Electron.
 
-在窗口中选择一个本地媒体目录，然后：
+In the application window, select a local media directory, then:
 
-1. 从左侧选择扫描出的叶子目录；
-2. 在缩略图网格中滚动浏览，内容会分页加载；
-3. 点击图片进入应用内预览，使用前后按钮或键盘方向键导航；
-4. 使用“打开目录”等操作回到系统文件管理器。
+1. Select one of the discovered leaf directories in the sidebar.
+2. Browse the thumbnail grid; additional content loads page by page as you
+   scroll.
+3. Select an image to open the in-app preview, then navigate with the previous
+   and next buttons or the keyboard arrow keys.
+4. Use actions such as **Open Folder** to return to the system file manager.
 
-扫描大型目录可能需要一段时间。请先用已备份、非敏感的测试目录体验；本项目仍处早期阶段，尚未完成跨平台端到端验证。
+Scanning a large directory may take some time. Start with a backed-up,
+non-sensitive test directory. This project remains at an early stage and has not
+completed cross-platform end-to-end validation.
 
-## 当前实现与仓库结构
+## Current Implementation and Repository Layout
 
-| 路径 | 状态 | 用途 |
+| Path | Status | Purpose |
 | --- | --- | --- |
-| `src/main/`、`renderer/` | **主实现** | Electron 主进程、目录扫描、偏好存储和渲染界面 |
-| `src/image_viewer/` | 实验性组件 | Python/SQLite 索引器与中文菜单模型，尚未接入主界面 |
-| `app/` | 历史原型 | 独立 Electron 原型，不是当前支持的启动入口 |
-| `tests/` | 部分覆盖 | 目前仅覆盖 Python 组件，Electron 尚缺自动化测试 |
+| `src/main/`, `renderer/` | **Primary implementation** | Electron main process, directory scanning, preference storage, and renderer UI |
+| `src/image_viewer/` | Experimental component | Python/SQLite indexer and Chinese menu model; not yet integrated into the primary UI |
+| `app/` | Historical prototype | Standalone Electron prototype; not the currently supported entry point |
+| `tests/` | Partial coverage | Currently covers only the Python components; Electron has no automated UI tests yet |
 
-Python 实验组件可用下面的方式验证：
+You can validate the experimental Python components separately:
 
 ```bash
 python -m venv .venv
@@ -82,50 +105,83 @@ python -m pip install -e '.[dev]'
 pytest
 ```
 
-## 平台验证状态
+## Platform Validation Status
 
-| 平台 | 状态 | 依据 |
+| Platform | Status | Evidence |
 | --- | --- | --- |
-| Ubuntu 24.04 x64 | **已验证** | 2026-08-03 从不含依赖和本地数据的干净检出执行 `npm ci`、`npm run build`；CI 亦使用此平台 |
-| Windows x64 | **预览版已发布** | Windows Server 2025 CI 构建、校验并全新解压；本地 Windows x64 完成五秒启动冒烟测试 |
-| macOS | **未验证** | 当前没有该平台的干净环境启动记录，不推断支持 |
+| Ubuntu 24.04 x64 | **Validated** | On August 3, 2026, `npm ci` and `npm run build` succeeded from a clean checkout without dependencies or local data; CI also uses this platform |
+| Windows x64 | **Preview released** | Windows Server 2025 CI builds and verifies a freshly extracted package; a five-second startup smoke test was also completed locally on Windows x64 |
+| macOS | **Not validated** | No clean-environment startup record is currently available, so support is not implied |
 
-“已验证”只代表上述源码流程。图形窗口启动还需要真实桌面会话；
-无显示器 CI 中只验证 Electron 入口、语法和包内容。
+“Validated” refers only to the source-based workflows described above. Launching
+the graphical window also requires a real desktop session. Headless CI validates
+only the Electron entry point, syntax, and package contents.
 
-Windows 便携包的固定环境、命令、检查边界和校验方法见
-[v0.1.0 发布说明](docs/releases/v0.1.0.md)。该便携包及校验文件由
-`Windows release package` 工作流生成；自动验证和五秒启动冒烟测试不等同于已签名发布或完整界面验收。
+See the [v0.1.0 release notes](docs/releases/v0.1.0.md) for the Windows portable
+package's pinned environment, commands, validation scope, and checksum
+instructions. The `Windows release package` workflow generates both the portable
+package and its checksum file. Automated verification and a five-second startup
+smoke test are not equivalent to a signed release or complete UI acceptance
+testing.
 
-## 持续集成
+## Continuous Integration
 
-GitHub Actions 固定使用 Python 3.12.8、Node.js 20.18.1，并在仓库根目录复现安装、测试、静态检查和 Electron 包内容验证。Node 工作流使用与本地相同的 `npm run check`、`npm test` 和 `npm run build` 入口；仓库卫生工作流还检查 JSON、Markdown、超过 5 MiB 的受版本控制文件和常见密钥。工作流只输出日志，不上传用户目录、数据库、媒体文件或其他 artifact。
+GitHub Actions uses Python 3.12.8 and Node.js 20.18.1, and reproduces dependency
+installation, tests, static checks, and Electron package-content validation from
+the repository root. The Node.js workflow uses the same `npm run check`,
+`npm test`, and `npm run build` entry points as local development. The repository
+hygiene workflow also checks JSON, Markdown, tracked files larger than 5 MiB, and
+common secret patterns. Workflows emit logs only; they do not upload user
+directories, databases, media files, or other artifacts.
 
-根目录 `package-lock.json` 只属于当前主应用。历史原型 `app/` 暂无自己的锁文件，因此 CI 不在该目录安装依赖，也不会向上查找并误用根锁文件；在原型归属确认并生成独立锁文件前，只对其自有 JavaScript 做语法检查。每个工作流步骤的名称均标注实际命令及工作目录，失败时可直接定位到对应验证。
+The root `package-lock.json` belongs only to the current primary application. The
+historical `app/` prototype does not have its own lockfile, so CI neither installs
+dependencies in that directory nor searches upward and accidentally reuses the
+root lockfile. Until ownership of the prototype is confirmed and a separate
+lockfile is generated, CI performs syntax checks only on its own JavaScript.
+Each workflow step names its actual command and working directory so failures can
+be traced directly to the corresponding validation.
 
-## 反馈与贡献
+## Feedback and Contributions
 
-- 遇到可复现的问题：使用 [Bug 报告](.github/ISSUE_TEMPLATE/bug_report.yml)。
-- 有功能构想：使用 [功能建议](.github/ISSUE_TEMPLATE/feature_request.yml)。
-- 怀疑存在安全问题：**不要创建公开 Issue**，请按 [安全政策](SECURITY.md) 私下报告。
-- 准备提交修改：先阅读 [贡献指南](CONTRIBUTING.md)、[行为准则](CODE_OF_CONDUCT.md) 和 [Roadmap](ROADMAP.md)，再按 [PR 模板](.github/pull_request_template.md) 自检。
+- For a reproducible problem, use the
+  [bug report template](.github/ISSUE_TEMPLATE/bug_report.yml).
+- For a feature idea, use the
+  [feature request template](.github/ISSUE_TEMPLATE/feature_request.yml).
+- If you suspect a security issue, **do not open a public issue**. Report it
+  privately according to the [security policy](SECURITY.md).
+- Before submitting changes, read the [contribution guide](CONTRIBUTING.md),
+  [code of conduct](CODE_OF_CONDUCT.md), and [roadmap](ROADMAP.md), then review
+  the [pull request template](.github/pull_request_template.md).
 
-维护者会尽力回应，但在项目进入稳定阶段前不承诺响应时限、兼容性或发布节奏。
+Maintainers will make a reasonable effort to respond, but do not guarantee
+response times, compatibility, or a release cadence before the project reaches a
+stable stage.
 
-## 项目状态
+## Project Status
 
-- 成熟度：探索/原型阶段（`0.x`），接口、数据格式与产品方向均可能变化。
-- 发布：已提供 [v0.1.0 Windows x64 预览便携包](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)。
-- 测试：Python 单元测试可用；Electron 主要依赖语法与人工验证。
-- 计划：参见 [ROADMAP.md](ROADMAP.md)。
-- 变更：参见 [CHANGELOG.md](CHANGELOG.md)。
-- 许可证：原创代码与文档采用 [MIT License](LICENSE)；第三方组件适用各自许可证。
+- Maturity: exploratory/prototype stage (`0.x`); APIs, data formats, and product
+  direction may change.
+- Release: a
+  [v0.1.0 Windows x64 preview portable package](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)
+  is available.
+- Testing: Python unit tests are available; Electron validation primarily relies
+  on syntax checks and manual testing.
+- Plans: see [ROADMAP.md](ROADMAP.md).
+- Changes: see [CHANGELOG.md](CHANGELOG.md).
+- License: original code and documentation use the [MIT License](LICENSE);
+  third-party components remain subject to their respective licenses.
 
-发布状态、公开数据口径、人工复核责任与正式 Release 后的周报规则见
-[维护与发布证据记录](docs/maintenance-evidence.md)。该记录区分候选构建与正式发布，
-并对无法从 GitHub 或 Release 页面核验的数据明确标记为“暂缺”。
+See the [maintenance and release evidence log](docs/maintenance-evidence.md) for
+release status, public-data reporting conventions, manual review
+responsibilities, and weekly reporting rules after a formal release. That log
+distinguishes candidate builds from formal releases and explicitly marks data
+that cannot be verified from GitHub or the Releases page as unavailable.
 
-## v0.1.0 发布后验证边界
+## v0.1.0 Post-release Validation Boundaries
 
-v0.1.0 已作为早期预览版发布。当前证据只覆盖可重复的 Windows x64 构建、校验、全新解压和
-五秒启动冒烟测试；完整真实媒体操作、更长时间稳定性、代码签名及其他平台仍待验证。后续发布不得把当前预览边界扩大表述为稳定支持。
+v0.1.0 has been released as an early preview. Current evidence covers only a
+reproducible Windows x64 build, checksum verification, fresh extraction, and a
+five-second startup smoke test. Full workflows with real media, longer-term
+stability, code signing, and other platforms still require validation. Future
+releases must not describe the current preview evidence as stable support.
