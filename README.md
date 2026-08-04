@@ -15,10 +15,10 @@ response times.
 
 ## Download
 
-- [ImageViewer v0.1.0](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0):
+- [ImageViewer v0.1.1](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.1):
   a portable, installation-free package for Windows x64.
 - After downloading the ZIP archive and its matching `.sha256` file, follow the
-  [v0.1.0 release notes](docs/releases/v0.1.0.md) to verify the checksum.
+  [v0.1.1 release notes](docs/releases/v0.1.1.md) to verify the checksum.
 
 The application is not code-signed, so Windows SmartScreen may display an
 unknown-publisher warning. Downloads for macOS and other Windows architectures
@@ -117,7 +117,7 @@ pytest
 the graphical window also requires a real desktop session. Headless CI validates
 only the Electron entry point, syntax, and package contents.
 
-See the [v0.1.0 release notes](docs/releases/v0.1.0.md) for the Windows portable
+See the [v0.1.1 release notes](docs/releases/v0.1.1.md) for the Windows portable
 package's pinned environment, commands, validation scope, and checksum
 instructions. The `Windows release package` workflow generates both the portable
 package and its checksum file. Automated verification and a five-second startup
@@ -163,7 +163,7 @@ stable stage.
 - Maturity: exploratory/prototype stage (`0.x`); APIs, data formats, and product
   direction may change.
 - Release: a
-  [v0.1.0 Windows x64 preview portable package](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)
+  [v0.1.1 Windows x64 preview portable package](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.1)
   is available.
 - Testing: Python unit tests are available; Electron validation primarily relies
   on syntax checks and manual testing.
@@ -178,9 +178,9 @@ responsibilities, and weekly reporting rules after a formal release. That log
 distinguishes candidate builds from formal releases and explicitly marks data
 that cannot be verified from GitHub or the Releases page as unavailable.
 
-## v0.1.0 Post-release Validation Boundaries
+## v0.1.1 Post-release Validation Boundaries
 
-v0.1.0 has been released as an early preview. Current evidence covers only a
+v0.1.1 has been released as an early preview. Current evidence covers only a
 reproducible Windows x64 build, checksum verification, fresh extraction, and a
 five-second startup smoke test. Full workflows with real media, longer-term
 stability, code signing, and other platforms still require validation. Future

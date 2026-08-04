@@ -1,6 +1,6 @@
 {
   "name": "local-media-explorer",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Electron shell for the ImageViewer 索引工具，提供完整中文界面。",
   "main": "main.js",
   "private": true,

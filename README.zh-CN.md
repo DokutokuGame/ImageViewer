@@ -10,8 +10,8 @@ ImageViewer 是一个**早期开发阶段**的本地桌面媒体浏览器：选�
 
 ## 下载
 
-- [ImageViewer v0.1.0](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)：Windows x64 免安装便携包；
-- 下载 ZIP 和同名 `.sha256` 文件后，按 [v0.1.0 发布说明](docs/releases/v0.1.0.md)
+- [ImageViewer v0.1.1](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.1)：Windows x64 免安装便携包；
+- 下载 ZIP 和同名 `.sha256` 文件后，按 [v0.1.1 发布说明](docs/releases/v0.1.1.md)
   核对校验值。
 
 程序尚未签名，Windows SmartScreen 可能显示未知发布者提示。macOS 和其他 Windows
@@ -94,7 +94,7 @@ pytest
 无显示器 CI 中只验证 Electron 入口、语法和包内容。
 
 Windows 便携包的固定环境、命令、检查边界和校验方法见
-[v0.1.0 发布说明](docs/releases/v0.1.0.md)。该便携包及校验文件由
+[v0.1.1 发布说明](docs/releases/v0.1.1.md)。该便携包及校验文件由
 `Windows release package` 工作流生成；自动验证和五秒启动冒烟测试不等同于已签名发布或完整界面验收。
 
 ## 持续集成
@@ -115,7 +115,7 @@ GitHub Actions 固定使用 Python 3.12.8、Node.js 20.18.1，并在仓库根目
 ## 项目状态
 
 - 成熟度：探索/原型阶段（`0.x`），接口、数据格式与产品方向均可能变化。
-- 发布：已提供 [v0.1.0 Windows x64 预览便携包](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.0)。
+- 发布：已提供 [v0.1.1 Windows x64 预览便携包](https://github.com/DokutokuGame/ImageViewer/releases/tag/v0.1.1)。
 - 测试：Python 单元测试可用；Electron 主要依赖语法与人工验证。
 - 计划：参见 [ROADMAP.md](ROADMAP.md)。
 - 变更：参见 [CHANGELOG.md](CHANGELOG.md)。
@@ -125,7 +125,7 @@ GitHub Actions 固定使用 Python 3.12.8、Node.js 20.18.1，并在仓库根目
 [维护与发布证据记录](docs/maintenance-evidence.md)。该记录区分候选构建与正式发布，
 并对无法从 GitHub 或 Release 页面核验的数据明确标记为“暂缺”。
 
-## v0.1.0 发布后验证边界
+## v0.1.1 发布后验证边界
 
-v0.1.0 已作为早期预览版发布。当前证据只覆盖可重复的 Windows x64 构建、校验、全新解压和
+v0.1.1 已作为早期预览版发布。当前证据只覆盖可重复的 Windows x64 构建、校验、全新解压和
 五秒启动冒烟测试；完整真实媒体操作、更长时间稳定性、代码签名及其他平台仍待验证。后续发布不得把当前预览边界扩大表述为稳定支持。
