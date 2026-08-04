@@ -1,5 +1,7 @@
 # ImageViewer
 
+[English](README.en.md) | **简体中文**
+
 [![Python validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/python.yml)
 [![Node and Electron validation](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/node.yml)
 [![Repository hygiene](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml/badge.svg)](https://github.com/DokutokuGame/ImageViewer/actions/workflows/repository.yml)
