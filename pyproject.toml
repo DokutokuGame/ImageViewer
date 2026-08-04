@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "imageviewer"
-version = "0.1.0"
+version = "0.1.1"
 description = "Local media indexer for fast browsing"
 authors = [{name = "ImageViewer Team"}]
 readme = "README.md"

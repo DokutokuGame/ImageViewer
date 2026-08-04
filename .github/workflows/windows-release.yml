@@ -29,9 +29,9 @@ jobs:
       - name: Upload the reproducible release candidates
         uses: actions/upload-artifact@v4
         with:
-          name: ImageViewer-0.1.0-windows-x64
+          name: ImageViewer-0.1.1-windows-x64
           path: |
-            dist/ImageViewer-0.1.0-win-x64.zip
-            dist/ImageViewer-0.1.0-win-x64.zip.sha256
+            dist/ImageViewer-0.1.1-win-x64.zip
+            dist/ImageViewer-0.1.1-win-x64.zip.sha256
           if-no-files-found: error
           retention-days: 14
