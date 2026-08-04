@@ -1,3 +1,6 @@
+const { t, translateDocument } = window.ImageViewerI18n;
+translateDocument();
+
 const directoryListEl = document.getElementById('directory-list');
 const mediaGridEl = document.getElementById('media-grid');
 const mediaScrollContainer = document.querySelector('.media-panel-content');
@@ -79,7 +82,7 @@ render();
 
 mediaApi?.getDemoData?.().then((demo) => {
   if (!demo) return;
-  showMessage('演示模式仅展示虚拟目录元数据，不会读取或写入媒体文件。', false);
+  showMessage(t('demoNotice'), false);
   updateState({ ...demo, selectedPath: demo.leaves[0]?.path ?? null });
 });
 
@@ -143,7 +146,7 @@ document.addEventListener('keydown', handleMediaViewerKeydown, true);
 
 if (!mediaApi?.selectRoot) {
   selectRootButton.disabled = true;
-  selectRootButton.textContent = '选择目录（不可用）';
+  selectRootButton.textContent = t('selectDirectoryUnavailable');
   console.warn('mediaApi.selectRoot is unavailable.');
 } else {
   selectRootButton.addEventListener('click', async () => {
@@ -248,7 +251,7 @@ function render() {
 
 function renderRoot() {
   if (!currentState.root) {
-    currentRootEl.textContent = '尚未选择目录';
+    currentRootEl.textContent = t('noDirectorySelected');
   } else {
     currentRootEl.textContent = currentState.root;
   }
@@ -265,8 +268,8 @@ function renderSavedTags() {
     const empty = document.createElement('span');
     empty.className = 'tag-empty';
     empty.textContent = mediaApi?.getRootTags
-      ? '尚未保存任何目录。'
-      : '无法获取已保存的目录。';
+      ? t('noSavedDirectories')
+      : t('savedDirectoriesUnavailable');
     tagListEl.appendChild(empty);
     return;
   }
@@ -287,7 +290,7 @@ function renderSavedTags() {
     const removeButton = document.createElement('button');
     removeButton.className = 'tag-remove-button';
     removeButton.type = 'button';
-    removeButton.setAttribute('aria-label', `移除 ${label}`);
+    removeButton.setAttribute('aria-label', t('removeItem', { label }));
     removeButton.textContent = '×';
     removeButton.addEventListener('click', (event) =>
       handleSavedTagRemoval(event, tag, label)
@@ -310,7 +313,7 @@ function renderTagFilters() {
   if (!currentState.leaves.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
-    empty.textContent = '选择目录后会自动生成标签。';
+    empty.textContent = t('tagsAfterSelection');
     filterTagListEl.appendChild(empty);
     restoreFilterTagScroll(previousScrollTop);
     return;
@@ -329,7 +332,7 @@ function renderTagFilters() {
   if (!currentState.derivedTags.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
-    empty.textContent = '未发现重复关键词，暂无生成标签。';
+    empty.textContent = t('noGeneratedTags');
     filterTagListEl.appendChild(empty);
     restoreFilterTagScroll(previousScrollTop);
     return;
@@ -338,7 +341,7 @@ function renderTagFilters() {
   const buttonsContainer = document.createElement('div');
   buttonsContainer.className = 'filter-tag-button-group';
 
-  const allButton = createFilterButton('全部', null, currentState.activeTag == null);
+  const allButton = createFilterButton(t('all'), null, currentState.activeTag == null);
   const allEntry = document.createElement('div');
   allEntry.className = 'filter-tag-entry';
   allEntry.appendChild(allButton);
@@ -356,7 +359,7 @@ function renderTagFilters() {
   if (!filteredTags.length) {
     const empty = document.createElement('span');
     empty.className = 'filter-tag-empty';
-    empty.textContent = '没有找到匹配的标签。';
+    empty.textContent = t('noMatchingTags');
     filterTagListEl.appendChild(empty);
   }
 
@@ -421,8 +424,8 @@ function createFilterTagEntry(tag) {
   const excludeButton = document.createElement('button');
   excludeButton.type = 'button';
   excludeButton.className = 'filter-tag-exclude-button';
-  excludeButton.setAttribute('aria-label', `排除标签 ${tag.label}`);
-  excludeButton.title = '从标签列表中排除此标签';
+  excludeButton.setAttribute('aria-label', t('excludeTag', { label: tag.label }));
+  excludeButton.title = t('excludeTagTitle');
   excludeButton.textContent = '×';
   excludeButton.addEventListener('click', (event) =>
     handleExcludeTag(event, tag)
@@ -529,7 +532,7 @@ function createExcludedTagSettings() {
 
   const title = document.createElement('h4');
   title.className = 'excluded-tag-title';
-  title.textContent = '标签排除';
+  title.textContent = t('tagExclusions');
   header.appendChild(title);
 
   const excluded = Array.isArray(currentState.excludedTags)
@@ -549,11 +552,11 @@ function createExcludedTagSettings() {
     String(Boolean(currentState.excludedTagPanelExpanded))
   );
   toggleButton.textContent = currentState.excludedTagPanelExpanded
-    ? '收起'
-    : '展开';
+    ? t('collapse')
+    : t('expand');
   toggleButton.setAttribute(
     'aria-label',
-    currentState.excludedTagPanelExpanded ? '收起标签排除设置' : '展开标签排除设置'
+    currentState.excludedTagPanelExpanded ? t('collapseTagExclusions') : t('expandTagExclusions')
   );
   toggleButton.addEventListener('click', (event) => {
     event.preventDefault();
@@ -581,7 +584,7 @@ function createExcludedTagSettings() {
 
   const help = document.createElement('p');
   help.className = 'excluded-tag-help';
-  help.textContent = '被排除的标签不会在筛选列表中显示，子文件夹也不会按照这些标签分组。';
+  help.textContent = t('excludedTagsHelp');
   body.appendChild(help);
 
   const form = document.createElement('form');
@@ -591,14 +594,14 @@ function createExcludedTagSettings() {
   const input = document.createElement('input');
   input.type = 'text';
   input.className = 'excluded-tag-input';
-  input.placeholder = '输入要排除的标签';
-  input.setAttribute('aria-label', '输入要排除的标签');
+  input.placeholder = t('excludedTagInput');
+  input.setAttribute('aria-label', t('excludedTagInput'));
   form.appendChild(input);
 
   const addButton = document.createElement('button');
   addButton.type = 'submit';
   addButton.className = 'excluded-tag-add-button';
-  addButton.textContent = '添加';
+  addButton.textContent = t('add');
   form.appendChild(addButton);
 
   body.appendChild(form);
@@ -606,7 +609,7 @@ function createExcludedTagSettings() {
   if (!excluded.length) {
     const empty = document.createElement('span');
     empty.className = 'excluded-tag-empty';
-    empty.textContent = '尚未排除任何标签。';
+    empty.textContent = t('noExcludedTags');
     body.appendChild(empty);
     container.appendChild(body);
     return container;
@@ -637,7 +640,7 @@ function createExcludedTagSettings() {
     const restoreButton = document.createElement('button');
     restoreButton.type = 'button';
     restoreButton.className = 'excluded-tag-restore-button';
-    restoreButton.textContent = '恢复';
+    restoreButton.textContent = t('restore');
     restoreButton.addEventListener('click', () =>
       handleRestoreExcludedTag(item.id)
     );
@@ -664,12 +667,12 @@ function renderDirectoryList() {
     if (currentState.activeTag) {
       const label = getActiveTagLabel();
       emptyMessage.textContent = label
-        ? `没有找到与标签“${label}”匹配的文件夹。`
-        : '没有找到匹配所选标签的文件夹。';
+        ? t('noFoldersForTag', { label })
+        : t('noFoldersForSelection');
     } else {
       emptyMessage.textContent = currentState.root
-        ? '所选目录中没有媒体文件。'
-        : '请选择一个目录开始。';
+        ? t('noMediaInSelection')
+        : t('selectDirectoryToStart');
     }
     directoryListEl.appendChild(emptyMessage);
     directoryListEl.scrollTop = 0;
@@ -691,7 +694,7 @@ function renderDirectoryList() {
       void openDirectoryInExplorer(leaf.path);
     });
 
-    item.title = '右键可在系统文件管理器中打开该目录';
+    item.title = t('folderContextHint');
 
     const name = document.createElement('span');
     name.className = 'directory-name';
@@ -731,7 +734,7 @@ function updateOpenDirectoryButton(leaf) {
     openDirectoryButton.title = leaf.path;
     openDirectoryButton.setAttribute(
       'aria-label',
-      `在资源管理器中打开 ${leaf.displayPath || leaf.path}`
+      t('openNamedDirectory', { path: leaf.displayPath || leaf.path })
     );
   } else {
     openDirectoryButton.disabled = true;
@@ -750,12 +753,12 @@ async function openDirectoryInExplorer(directoryPath) {
     try {
       const result = await mediaApi.openDirectory(directoryPath);
       if (result && result.success === false) {
-        throw new Error(result.error || '无法打开目录');
+        throw new Error(result.error || t('directoryOpenFailed'));
       }
       return;
     } catch (error) {
       console.error('Failed to open directory', error);
-      window.alert('无法在系统文件管理器中打开该目录，请确认路径是否存在。');
+      window.alert(t('directoryOpenAlert'));
       return;
     }
   }
@@ -763,13 +766,13 @@ async function openDirectoryInExplorer(directoryPath) {
   try {
     if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(directoryPath);
-      window.alert(`已复制目录路径：\n${directoryPath}`);
+      window.alert(t('directoryPathCopied', { path: directoryPath }));
     } else {
-      window.prompt('请复制目录路径：', directoryPath);
+      window.prompt(t('copyDirectoryPath'), directoryPath);
     }
   } catch (error) {
     console.error('Failed to copy directory path', error);
-    window.prompt('请复制目录路径：', directoryPath);
+    window.prompt(t('copyDirectoryPath'), directoryPath);
   }
 }
 
@@ -782,14 +785,14 @@ function formatSavedTagLabel(tag) {
     const lastSegment = segments.length ? segments[segments.length - 1] : '';
     return lastSegment || tag.path;
   }
-  return '已保存的目录';
+  return t('savedDirectory');
 }
 
 async function handleSavedTagSelection(tag) {
   if (!mediaApi?.scanDirectory) {
     return;
   }
-  showMediaPendingProgress('正在加载已保存的目录…');
+  showMediaPendingProgress(t('loadingSavedDirectory'));
 
   try {
     const result = await mediaApi.scanDirectory(tag.path);
@@ -819,7 +822,7 @@ async function handleSavedTagRemoval(event, tag, label) {
     return;
   }
 
-  const confirmed = window.confirm(`要移除已保存的目录“${label}”吗？`);
+  const confirmed = window.confirm(t('removeSavedDirectoryConfirm', { label }));
   if (!confirmed) {
     return;
   }
@@ -837,7 +840,7 @@ function renderMedia() {
 
   if (!selectedPath) {
     updateOpenDirectoryButton(null);
-    mediaHeadingEl.textContent = '媒体';
+    mediaHeadingEl.textContent = t('media');
     mediaCountEl.textContent = '';
     abortMediaRender();
     resetMediaView();
@@ -848,7 +851,7 @@ function renderMedia() {
   const leaf = currentState.leaves.find((item) => item.path === selectedPath);
   if (!leaf) {
     updateOpenDirectoryButton(null);
-    mediaHeadingEl.textContent = '媒体';
+    mediaHeadingEl.textContent = t('media');
     mediaCountEl.textContent = '';
     abortMediaRender();
     resetMediaView();
@@ -860,7 +863,7 @@ function renderMedia() {
 
   const itemCount = Number.isFinite(leaf.mediaFileCount) ? leaf.mediaFileCount : 0;
   mediaHeadingEl.textContent = leaf.displayPath;
-  mediaCountEl.textContent = `${itemCount} 个项目`;
+  mediaCountEl.textContent = t('itemCount', { count: itemCount });
 
   const needsReload =
     mediaSession.path !== leaf.path || mediaSession.sourceVersion !== currentState.leavesVersion;
@@ -877,13 +880,13 @@ function renderMedia() {
   if (!itemCount) {
     const emptyMessage = document.createElement('p');
     emptyMessage.className = 'empty-state';
-    emptyMessage.textContent = '该文件夹中没有媒体文件。';
+    emptyMessage.textContent = t('noMediaInFolder');
     mediaGridEl.appendChild(emptyMessage);
     return;
   }
 
   if (!mediaApi?.listMediaFiles) {
-    showMediaLoadError('当前版本无法加载媒体文件。');
+    showMediaLoadError(t('mediaUnavailable'));
     return;
   }
 
@@ -937,7 +940,7 @@ async function fetchNextMediaChunk(session) {
 
   if (!mediaApi?.listMediaFiles) {
     session.done = true;
-    showMediaLoadError('无法加载媒体文件。');
+    showMediaLoadError(t('mediaLoadFailed'));
     failMediaProgress();
     delete mediaGridEl.dataset.loading;
     mediaRenderAbortController = null;
@@ -960,7 +963,7 @@ async function fetchNextMediaChunk(session) {
     }
     console.error('Failed to load media files', error);
     session.done = true;
-    showMediaLoadError('无法加载媒体文件。');
+    showMediaLoadError(t('mediaLoadFailed'));
     failMediaProgress();
     delete mediaGridEl.dataset.loading;
     mediaRenderAbortController = null;
@@ -976,7 +979,7 @@ async function fetchNextMediaChunk(session) {
 
   if (response?.error) {
     session.done = true;
-    showMediaLoadError(response.error || '无法加载媒体文件。');
+    showMediaLoadError(response.error || t('mediaLoadFailed'));
     failMediaProgress();
     delete mediaGridEl.dataset.loading;
     mediaRenderAbortController = null;
@@ -1006,7 +1009,7 @@ async function fetchNextMediaChunk(session) {
     if (!hasMore && session.renderedCount === 0) {
       const emptyMessage = document.createElement('p');
       emptyMessage.className = 'empty-state';
-      emptyMessage.textContent = '该文件夹中没有媒体文件。';
+      emptyMessage.textContent = t('noMediaInFolder');
       mediaGridEl.appendChild(emptyMessage);
     }
 
@@ -1079,7 +1082,7 @@ async function renderMediaChunk(files, totalCount, requestId) {
 function showMediaLoadError(message) {
   const emptyMessage = document.createElement('p');
   emptyMessage.className = 'empty-state';
-  emptyMessage.textContent = message || '无法加载媒体文件。';
+  emptyMessage.textContent = message || t('mediaLoadFailed');
   mediaGridEl.appendChild(emptyMessage);
 }
 
@@ -1391,8 +1394,8 @@ function createTagFilterControls() {
   searchInput.type = 'search';
   searchInput.id = 'tag-search-input';
   searchInput.className = 'filter-tag-search-input';
-  searchInput.placeholder = '搜索标签';
-  searchInput.setAttribute('aria-label', '搜索标签');
+  searchInput.placeholder = t('searchTags');
+  searchInput.setAttribute('aria-label', t('searchTags'));
   const searchValue =
     typeof tagSearchDraft === 'string'
       ? tagSearchDraft
@@ -1406,7 +1409,7 @@ function createTagFilterControls() {
   const confirmButton = document.createElement('button');
   confirmButton.type = 'submit';
   confirmButton.className = 'filter-tag-search-submit';
-  confirmButton.textContent = '确认';
+  confirmButton.textContent = t('confirm');
 
   searchForm.appendChild(searchInput);
   searchForm.appendChild(confirmButton);
@@ -1419,11 +1422,11 @@ function createTagFilterControls() {
   const sortSelect = document.createElement('select');
   sortSelect.id = 'tag-sort-select';
   sortSelect.className = 'filter-tag-sort-select';
-  sortSelect.setAttribute('aria-label', '标签排序');
+  sortSelect.setAttribute('aria-label', t('tagSort'));
 
   const options = [
-    { value: TAG_SORT_MODES.ALPHABETICAL, label: '按首字母' },
-    { value: TAG_SORT_MODES.FREQUENCY, label: '按数量' },
+    { value: TAG_SORT_MODES.ALPHABETICAL, label: t('sortAlphabetically') },
+    { value: TAG_SORT_MODES.FREQUENCY, label: t('sortByCount') },
   ];
 
   options.forEach((option) => {
@@ -1543,7 +1546,7 @@ function showMediaPendingProgress(message) {
   }
 
   if (mediaProgressLabelEl) {
-    mediaProgressLabelEl.textContent = message || '正在加载…';
+    mediaProgressLabelEl.textContent = message || t('loading');
   }
 }
 
@@ -1561,7 +1564,7 @@ function updateMediaProgress(loaded) {
   }
 
   if (mediaProgressLabelEl) {
-    mediaProgressLabelEl.textContent = `加载中 ${clampedLoaded} / ${total}`;
+    mediaProgressLabelEl.textContent = t('loadingProgress', { loaded: clampedLoaded, total });
   }
 }
 
@@ -1574,7 +1577,7 @@ function finishMediaProgress() {
   updateMediaProgress(mediaProgressTotalCount);
 
   if (mediaProgressLabelEl) {
-    mediaProgressLabelEl.textContent = '加载完成';
+    mediaProgressLabelEl.textContent = t('loadingComplete');
   }
 
   mediaProgressEl.dataset.state = 'complete';
@@ -1596,7 +1599,7 @@ function failMediaProgress() {
   if (mediaProgressTotalCount > 0) {
     updateMediaProgress(mediaProgressTotalCount);
     if (mediaProgressLabelEl) {
-      mediaProgressLabelEl.textContent = '加载失败';
+      mediaProgressLabelEl.textContent = t('loadingFailed');
     }
     mediaProgressEl.dataset.state = 'error';
     if (mediaProgressHideTimer) {
@@ -1754,7 +1757,7 @@ function createMediaCard(file, signal, index) {
     const badge = document.createElement('span');
     badge.className = 'media-badge media-badge-video';
     badge.textContent = '🎬';
-    badge.title = '视频';
+    badge.title = t('video');
     badge.setAttribute('aria-hidden', 'true');
     card.appendChild(badge);
   }
@@ -1769,11 +1772,11 @@ function createMediaCard(file, signal, index) {
   const meta = document.createElement('span');
   meta.className = 'media-meta';
   if (file?.type === 'video') {
-    meta.textContent = '视频';
+    meta.textContent = t('video');
   } else if (file?.type === 'image') {
-    meta.textContent = '图片';
+    meta.textContent = t('image');
   } else {
-    meta.textContent = String(file?.type ?? '').toUpperCase() || '媒体';
+    meta.textContent = String(file?.type ?? '').toUpperCase() || t('media');
   }
 
   info.appendChild(name);
@@ -1783,7 +1786,7 @@ function createMediaCard(file, signal, index) {
   if (ratingValue !== undefined && ratingValue !== null && ratingValue !== '') {
     const rating = document.createElement('span');
     rating.className = 'media-rating';
-    rating.textContent = `评分：${ratingValue}`;
+    rating.textContent = t('rating', { rating: ratingValue });
     info.appendChild(rating);
   }
 
@@ -2183,7 +2186,7 @@ function createWorkerImageLoader() {
       return;
     }
 
-    reject(new Error('未知的图片加载结果'));
+    reject(new Error(t('unknownImageResult')));
   });
 
   worker.addEventListener('error', (event) => {
@@ -2192,7 +2195,7 @@ function createWorkerImageLoader() {
 
   const load = (url, signal) => {
     if (!url) {
-      return Promise.reject(new Error('缺少图片地址'));
+      return Promise.reject(new Error(t('missingImageUrl')));
     }
 
     if (signal?.aborted) {
@@ -2234,7 +2237,7 @@ function createWorkerImageLoader() {
 function createFallbackImageLoader() {
   const load = (url, signal) => {
     if (!url) {
-      return Promise.reject(new Error('缺少图片地址'));
+      return Promise.reject(new Error(t('missingImageUrl')));
     }
 
     if (signal?.aborted) {
@@ -2266,7 +2269,7 @@ function createFallbackImageLoader() {
 
       image.onerror = (error) => {
         cleanup();
-        reject(error instanceof Error ? error : new Error('图片加载失败'));
+        reject(error instanceof Error ? error : new Error(t('imageLoadFailed')));
       };
 
       if (signal) {

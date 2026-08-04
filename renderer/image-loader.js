@@ -14,7 +14,7 @@ self.addEventListener('message', async (event) => {
   }
 
   if (!url) {
-    postMessage({ id, error: '缺少图片地址' });
+    postMessage({ id, error: 'Missing image URL' });
     return;
   }
 
@@ -28,7 +28,7 @@ self.addEventListener('message', async (event) => {
   try {
     const response = await fetch(url, { signal: controller.signal });
     if (!response.ok) {
-      throw new Error(`图片请求失败（${response.status}）`);
+      throw new Error(`Image request failed (${response.status})`);
     }
 
     const blob = await response.blob();
@@ -47,7 +47,7 @@ self.addEventListener('message', async (event) => {
     if (error?.name === 'AbortError') {
       postMessage({ id, aborted: true });
     } else {
-      postMessage({ id, error: error?.message || '图片加载失败' });
+      postMessage({ id, error: error?.message || 'Image failed to load' });
     }
   }
 });
